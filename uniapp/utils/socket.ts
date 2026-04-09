@@ -3,7 +3,7 @@
  * 提供行情和客服两个命名空间的连接管理
  */
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = '';
 
 interface SocketConfig {
   namespace: string;
