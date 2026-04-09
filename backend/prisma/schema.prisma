@@ -1,0 +1,648 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== L1 — 基础表（无外键依赖） ====================
+
+/// 角色表
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  displayName String
+  permissions Json
+  description String?
+  status      Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  admins Admin[]
+
+  @@map("roles")
+}
+
+/// 用户等级表
+model UserLevel {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  displayName String
+  minDeposit  Decimal  @db.Decimal(15, 2)
+  feeDiscount Decimal  @db.Decimal(5, 4)
+  leverageMax Int      @default(200)
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users User[]
+
+  @@map("user_levels")
+}
+
+/// 交易品种表
+model TradingSymbol {
+  id                Int      @id @default(autoincrement())
+  symbol            String   @unique
+  name              String
+  category          String
+  contractUnit      Int
+  contractUnitDesc  String
+  minLots           Decimal  @db.Decimal(10, 2)
+  maxLots           Decimal  @db.Decimal(10, 2)
+  maxPositionLots   Decimal  @db.Decimal(10, 2)
+  leverageMin       Int      @default(1)
+  leverageMax       Int      @default(200)
+  spreadType        String   @default("fixed")
+  spreadValue       Decimal  @db.Decimal(10, 4)
+  spreadMin         Decimal? @db.Decimal(10, 4)
+  spreadMax         Decimal? @db.Decimal(10, 4)
+  commissionType    String   @default("per_lot")
+  commissionValue   Decimal  @db.Decimal(10, 4)
+  commissionSide    String   @default("single")
+  swapLong          Decimal  @db.Decimal(10, 6)
+  swapShort         Decimal  @db.Decimal(10, 6)
+  swapTime          String   @default("05:00")
+  swapTripleDay     Int      @default(3)
+  tradingHoursStart String
+  tradingHoursEnd   String
+  maxSlippage       Decimal  @db.Decimal(10, 4)
+  pricePrecision    Int      @default(2)
+  status            Int      @default(1)
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  klineHistory   KlineHistory[]
+  symbolFeeTiers SymbolFeeTier[]
+  tradeOrders    TradeOrder[]
+  pendingOrders  PendingOrder[]
+  priceAlerts    PriceAlert[]
+  demoFeeConfig  DemoFeeConfig[]
+
+  @@map("trading_symbols")
+}
+
+// ==================== L2 — 用户表 ====================
+
+/// 用户表
+model User {
+  id               Int       @id @default(autoincrement())
+  email            String?   @unique
+  phone            String?   @unique
+  passwordHash     String
+  nickname         String?
+  avatar           String?
+  realName         String?
+  idCard           String?
+  idCardFront      String?
+  idCardBack       String?
+  kycStatus        String    @default("none")
+  kycReason        String?
+  twoFactorSecret  String?
+  twoFactorEnabled Boolean   @default(false)
+  userLevelId      Int       @default(1)
+  riskLevel        String?
+  status           Int       @default(1)
+  lastLoginAt      DateTime?
+  lastLoginIp      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  userLevel       UserLevel        @relation(fields: [userLevelId], references: [id])
+  fundAccount     FundAccount?
+  bankCards       BankCard[]
+  depositOrders   DepositOrder[]
+  withdrawOrders  WithdrawOrder[]
+  fundFlows       FundFlow[]
+  tradeOrders     TradeOrder[]
+  pendingOrders   PendingOrder[]
+  forceCloseRecords ForceCloseRecord[]
+  riskAlerts      RiskAlert[]
+  priceAlerts     PriceAlert[]
+  riskAssessments RiskAssessment[]
+  notifications   Notification[]
+  tickets         Ticket[]
+  chatSessions    ChatSession[]
+
+  @@map("users")
+}
+
+/// 管理员表
+model Admin {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  realName     String
+  email        String?
+  phone        String?
+  roleId       Int
+  avatar       String?
+  status       Int       @default(1)
+  lastLoginAt  DateTime?
+  lastLoginIp  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  role           Role             @relation(fields: [roleId], references: [id])
+  operationLogs  OperationLog[]
+
+  @@map("admins")
+}
+
+// ==================== L3 — 业务表 ====================
+
+/// 资金账户表
+model FundAccount {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  balance         Decimal  @default(0) @db.Decimal(15, 2)
+  frozenBalance   Decimal  @default(0) @db.Decimal(15, 2)
+  usedMargin      Decimal  @default(0) @db.Decimal(15, 2)
+  floatingPnl     Decimal  @default(0) @db.Decimal(15, 2)
+  totalDeposit    Decimal  @default(0) @db.Decimal(15, 2)
+  totalWithdraw   Decimal  @default(0) @db.Decimal(15, 2)
+  totalCommission Decimal  @default(0) @db.Decimal(15, 2)
+  totalSwap       Decimal  @default(0) @db.Decimal(15, 2)
+  totalPnl        Decimal  @default(0) @db.Decimal(15, 2)
+  accountType     String   @default("real")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("fund_accounts")
+}
+
+/// 银行卡表
+model BankCard {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  cardNumber  String
+  bankName    String
+  branchName  String?
+  holderName  String
+  holderPhone String?
+  isDefault   Boolean  @default(false)
+  status      Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id])
+  withdrawOrders WithdrawOrder[]
+
+  @@map("bank_cards")
+}
+
+/// 品种阶梯费率表
+model SymbolFeeTier {
+  id        Int      @id @default(autoincrement())
+  symbolId  Int
+  tierType  String
+  tierMin   Decimal  @db.Decimal(15, 2)
+  tierMax   Decimal  @db.Decimal(15, 2)
+  feeValue  Decimal  @db.Decimal(10, 4)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  symbol TradingSymbol @relation(fields: [symbolId], references: [id])
+
+  @@map("symbol_fee_tiers")
+}
+
+/// K 线历史数据表
+model KlineHistory {
+  id        Int      @id @default(autoincrement())
+  symbolId  Int
+  period    String
+  openTime  DateTime
+  open      Decimal  @db.Decimal(15, 4)
+  high      Decimal  @db.Decimal(15, 4)
+  low       Decimal  @db.Decimal(15, 4)
+  close     Decimal  @db.Decimal(15, 4)
+  volume    Decimal  @db.Decimal(15, 2)
+  createdAt DateTime @default(now())
+
+  symbol TradingSymbol @relation(fields: [symbolId], references: [id])
+
+  @@unique([symbolId, period, openTime])
+  @@map("kline_history")
+}
+
+// ==================== L4 — 交易/资金表 ====================
+
+/// 入金订单表
+model DepositOrder {
+  id             Int       @id @default(autoincrement())
+  orderNo        String    @unique
+  userId         Int
+  amount         Decimal   @db.Decimal(15, 2)
+  currency       String    @default("CNY")
+  paymentMethod  String
+  paymentChannel String?
+  paymentProof   String?
+  status         String    @default("pending")
+  remark         String?
+  reviewedBy     Int?
+  reviewedAt     DateTime?
+  reviewRemark   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("deposit_orders")
+}
+
+/// 出金订单表
+model WithdrawOrder {
+  id           Int       @id @default(autoincrement())
+  orderNo      String    @unique
+  userId       Int
+  amount       Decimal   @db.Decimal(15, 2)
+  fee          Decimal   @default(0) @db.Decimal(15, 2)
+  actualAmount Decimal   @db.Decimal(15, 2)
+  bankCardId   Int
+  status       String    @default("pending")
+  remark       String?
+  reviewedBy   Int?
+  reviewedAt   DateTime?
+  reviewRemark String?
+  processedBy  Int?
+  processedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id])
+  bankCard BankCard @relation(fields: [bankCardId], references: [id])
+
+  @@map("withdraw_orders")
+}
+
+/// 资金流水表
+model FundFlow {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  flowType      String
+  amount        Decimal  @db.Decimal(15, 2)
+  balanceBefore Decimal  @db.Decimal(15, 2)
+  balanceAfter  Decimal  @db.Decimal(15, 2)
+  refType       String?
+  refId         Int?
+  remark        String?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("fund_flows")
+}
+
+/// 交易订单表
+model TradeOrder {
+  id            Int       @id @default(autoincrement())
+  orderNo       String    @unique
+  userId        Int
+  symbolId      Int
+  direction     String
+  orderType     String
+  lots          Decimal   @db.Decimal(10, 2)
+  leverage      Int
+  openPrice     Decimal?  @db.Decimal(15, 4)
+  closePrice    Decimal?  @db.Decimal(15, 4)
+  stopLoss      Decimal?  @db.Decimal(15, 4)
+  takeProfit    Decimal?  @db.Decimal(15, 4)
+  trailingStop  Decimal?  @db.Decimal(15, 4)
+  margin        Decimal   @db.Decimal(15, 2)
+  spreadCost    Decimal   @default(0) @db.Decimal(15, 2)
+  commission    Decimal   @default(0) @db.Decimal(15, 2)
+  swap          Decimal   @default(0) @db.Decimal(15, 2)
+  floatingPnl   Decimal   @default(0) @db.Decimal(15, 2)
+  closedPnl     Decimal?  @db.Decimal(15, 2)
+  status        String    @default("open")
+  openedAt      DateTime  @default(now())
+  closedAt      DateTime?
+  closeReason   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id])
+  symbol           TradingSymbol     @relation(fields: [symbolId], references: [id])
+  forceCloseRecord ForceCloseRecord?
+
+  @@map("trade_orders")
+}
+
+/// 挂单表
+model PendingOrder {
+  id           Int       @id @default(autoincrement())
+  orderNo      String    @unique
+  userId       Int
+  symbolId     Int
+  direction    String
+  pendingType  String
+  lots         Decimal   @db.Decimal(10, 2)
+  targetPrice  Decimal   @db.Decimal(15, 4)
+  leverage     Int
+  stopLoss     Decimal?  @db.Decimal(15, 4)
+  takeProfit   Decimal?  @db.Decimal(15, 4)
+  trailingStop Decimal?  @db.Decimal(15, 4)
+  expireAt     DateTime?
+  status       String    @default("pending")
+  triggeredAt  DateTime?
+  tradeOrderId Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user   User          @relation(fields: [userId], references: [id])
+  symbol TradingSymbol @relation(fields: [symbolId], references: [id])
+
+  @@map("pending_orders")
+}
+
+// ==================== L5 — 风控/系统表 ====================
+
+/// 风控参数配置表
+model RiskConfig {
+  id          Int      @id @default(autoincrement())
+  configKey   String   @unique
+  configValue String
+  description String?
+  category    String   @default("general")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("risk_config")
+}
+
+/// 强平记录表
+model ForceCloseRecord {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  tradeOrderId Int      @unique
+  closePrice   Decimal  @db.Decimal(15, 4)
+  closedPnl    Decimal  @db.Decimal(15, 2)
+  marginRatio  Decimal  @db.Decimal(10, 4)
+  reason       String
+  operatorId   Int?
+  createdAt    DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id])
+  tradeOrder TradeOrder @relation(fields: [tradeOrderId], references: [id])
+
+  @@map("force_close_records")
+}
+
+/// 风险预警表
+model RiskAlert {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  alertType     String
+  alertLevel    String
+  marginRatio   Decimal?  @db.Decimal(10, 4)
+  description   String
+  status        String    @default("pending")
+  processedBy   Int?
+  processedAt   DateTime?
+  processRemark String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("risk_alerts")
+}
+
+/// 操作日志表
+model OperationLog {
+  id         Int      @id @default(autoincrement())
+  adminId    Int
+  module     String
+  action     String
+  targetType String?
+  targetId   Int?
+  detail     Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  admin Admin @relation(fields: [adminId], references: [id])
+
+  @@map("operation_logs")
+}
+
+/// 系统配置表
+model SystemConfig {
+  id          Int      @id @default(autoincrement())
+  configKey   String   @unique
+  configValue String
+  description String?
+  category    String   @default("general")
+  isEncrypted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_config")
+}
+
+/// 行情预警表
+model PriceAlert {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  symbolId    Int
+  alertType   String
+  targetValue Decimal   @db.Decimal(15, 4)
+  status      String    @default("active")
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user   User          @relation(fields: [userId], references: [id])
+  symbol TradingSymbol @relation(fields: [symbolId], references: [id])
+
+  @@map("price_alerts")
+}
+
+/// 风险测评表
+model RiskAssessment {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  answers   Json
+  score     Int
+  riskLevel String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("risk_assessments")
+}
+
+// ==================== L6 — 内容表 ====================
+
+/// 通知消息表
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String
+  title     String
+  content   String   @db.Text
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+/// 工单表
+model Ticket {
+  id         Int      @id @default(autoincrement())
+  ticketNo   String   @unique
+  userId     Int
+  type       String
+  title      String
+  content    String   @db.Text
+  images     Json?
+  status     String   @default("open")
+  assignedTo Int?
+  replies    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("tickets")
+}
+
+/// 公告表
+model Announcement {
+  id          Int       @id @default(autoincrement())
+  title       String
+  content     String    @db.Text
+  type        String    @default("notice")
+  isPublished Boolean   @default(false)
+  publishedAt DateTime?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("announcements")
+}
+
+/// 帮助文档表
+model HelpArticle {
+  id          Int      @id @default(autoincrement())
+  category    String
+  title       String
+  content     String   @db.Text
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("help_articles")
+}
+
+/// 营销活动表
+model Activity {
+  id               Int      @id @default(autoincrement())
+  title            String
+  description      String   @db.Text
+  type             String
+  rules            Json
+  image            String?
+  startAt          DateTime
+  endAt            DateTime
+  status           String   @default("draft")
+  participantCount Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("activities")
+}
+
+// ==================== L7 — 运营表 ====================
+
+/// 首页 Banner 表
+model Banner {
+  id          Int      @id @default(autoincrement())
+  title       String
+  image       String
+  linkType    String?
+  linkValue   String?
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("banners")
+}
+
+/// 首页奖励卡片表
+model RewardCard {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  icon        String?
+  linkType    String?
+  linkValue   String?
+  bgColor     String?
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("reward_cards")
+}
+
+// ==================== L7.5 — 客服表 ====================
+
+/// 客服会话表
+model ChatSession {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  status     String    @default("waiting") // waiting/active/closed
+  assignedTo Int?
+  closedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id])
+  messages ChatMessage[]
+
+  @@map("chat_sessions")
+}
+
+/// 客服消息表
+model ChatMessage {
+  id         Int      @id @default(autoincrement())
+  sessionId  Int
+  senderId   Int
+  senderType String   // user/admin
+  content    String   @db.Text
+  type       String   @default("text") // text/image
+  createdAt  DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id])
+
+  @@map("chat_messages")
+}
+
+// ==================== L8 — 模拟盘表 ====================
+
+/// 模拟盘费用配置表
+model DemoFeeConfig {
+  id              Int      @id @default(autoincrement())
+  symbolId        Int
+  spreadValue     Decimal? @db.Decimal(10, 4)
+  commissionValue Decimal? @db.Decimal(10, 4)
+  swapLong        Decimal? @db.Decimal(10, 6)
+  swapShort       Decimal? @db.Decimal(10, 6)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  symbol TradingSymbol @relation(fields: [symbolId], references: [id])
+
+  @@map("demo_fee_config")
+}

@@ -1,0 +1,26 @@
+{
+  "name": "trading-admin",
+  "version": "1.0.0",
+  "description": "寰球汇金交易所 - 管理后台",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.4.38",
+    "vue-router": "^4.4.5",
+    "pinia": "^2.2.6",
+    "@arco-design/web-vue": "^2.56.3",
+    "axios": "^1.7.9",
+    "dayjs": "^1.11.13",
+    "@vueuse/core": "^11.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.0.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vue-tsc": "^2.1.10"
+  }
+}
