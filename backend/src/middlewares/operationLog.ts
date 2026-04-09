@@ -39,7 +39,7 @@ export function operationLog(module: string, action: string) {
               method: request.method,
               url: request.url,
               body: sanitizeLogBody(request.body),
-            },
+            } as any,
             ip: request.ip,
             userAgent: request.headers['user-agent'] || '',
           },

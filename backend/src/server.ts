@@ -15,7 +15,7 @@ async function start() {
     await prisma.$connect();
     app.log.info('[Database] Connected successfully');
   } catch (err) {
-    app.log.error('[Database] Connection failed:', err);
+    app.log.error({ err }, '[Database] Connection failed');
     process.exit(1);
   }
 
@@ -46,7 +46,7 @@ async function start() {
       app.log.info('Server closed gracefully');
       process.exit(0);
     } catch (err) {
-      app.log.error('Error during shutdown:', err);
+      app.log.error({ err }, 'Error during shutdown');
       clearTimeout(timeout);
       process.exit(1);
     }

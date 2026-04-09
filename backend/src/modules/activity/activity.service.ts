@@ -13,7 +13,7 @@ export async function list(query: { page?: number; limit?: number }) {
 
 export async function create(data: Record<string, unknown>) {
   return prisma.activity.create({
-    data: data as { title: string; description: string; type: string; rules: Record<string, unknown>; startAt: Date; endAt: Date },
+    data: data as any,
   });
 }
 

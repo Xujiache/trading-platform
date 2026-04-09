@@ -64,7 +64,7 @@ export async function buildApp() {
   registerSlowRequestMonitor(app);
 
   // 全局错误处理
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: any, request, reply) => {
     if (error instanceof AppError) {
       return reply.status(error.statusCode).send({
         code: error.code,

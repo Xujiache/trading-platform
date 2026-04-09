@@ -2,7 +2,7 @@ import Decimal from 'decimal.js';
 import { redis } from '../config/redis';
 import { prisma } from '../config/database';
 
-interface TickData {
+export interface TickData {
   symbol: string;
   bid: string;
   ask: string;

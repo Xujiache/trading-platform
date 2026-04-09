@@ -35,7 +35,7 @@ export async function replyTicket(userId: number, id: number, content: string) {
   const replies = (ticket.replies as Array<Record<string, unknown>>) || [];
   replies.push({ sender: 'user', content, time: new Date().toISOString() });
 
-  return prisma.ticket.update({ where: { id }, data: { replies } });
+  return prisma.ticket.update({ where: { id }, data: { replies: replies as any } });
 }
 
 // ==================== 管理端工单 ====================
@@ -65,7 +65,7 @@ export async function adminReplyTicket(id: number, adminId: number, content: str
 
   return prisma.ticket.update({
     where: { id },
-    data: { replies, status: 'processing' },
+    data: { replies: replies as any, status: 'processing' },
   });
 }
 

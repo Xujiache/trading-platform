@@ -1,20 +1,20 @@
 /**
  * PM2 生产环境进程管理配置
- * 集群模式运行，自动重启，日志管理
+ * 使用 fork 模式运行（因为 Socket.IO 不支持 cluster 模式）
  */
 module.exports = {
   apps: [
     {
-      name: 'trading-api',
+      name: 'trading-platform-api',
       script: 'dist/server.js',
-      instances: 'max',
-      exec_mode: 'cluster',
+      instances: 1,
+      exec_mode: 'fork',
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
       env_production: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3001,
       },
       error_file: './logs/error.log',
       out_file: './logs/out.log',

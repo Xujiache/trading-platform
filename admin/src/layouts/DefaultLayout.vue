@@ -23,7 +23,7 @@
           <a-menu-item key="/trade/positions">持仓列表</a-menu-item>
         </a-sub-menu>
         <a-sub-menu key="fund">
-          <template #icon><icon-wallet /></template>
+          <template #icon><icon-storage /></template>
           <template #title>资金管理</template>
           <a-menu-item key="/fund/deposit">入金管理</a-menu-item>
           <a-menu-item key="/fund/withdraw">出金管理</a-menu-item>
@@ -99,7 +99,7 @@ import {
   IconUser,
   IconSettings,
   IconBarChart,
-  IconWallet,
+  IconStorage,
   IconSafe,
   IconFile,
   IconBook,
