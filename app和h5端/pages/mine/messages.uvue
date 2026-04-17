@@ -1,0 +1,108 @@
+<template>
+	<view class="msg-page">
+		<view class="tab-bar">
+			<view v-for="tab in tabs" :key="tab.key" :class="['tab-item', { active: currentTab == tab.key }]" @click="switchTab(tab.key)">
+				<text :class="['tab-text', { active: currentTab == tab.key }]">{{tab.label}}</text>
+			</view>
+		</view>
+		<scroll-view class="msg-list" direction="vertical">
+			<view v-if="list.length == 0" class="empty"><text class="empty-text">暂无消息</text></view>
+			<view v-for="item in list" :key="item.id" class="msg-item" @click="markRead(item)">
+				<view class="msg-header">
+					<text class="msg-type">{{getTypeText(item.type)}}</text>
+					<view v-if="!item.is_read" class="unread-dot"></view>
+				</view>
+				<text class="msg-title">{{item.title}}</text>
+				<text class="msg-content">{{item.content}}</text>
+				<text class="msg-time">{{item.created_at}}</text>
+			</view>
+		</scroll-view>
+		<view class="read-all-btn" @click="readAll"><text class="read-all-text">全部已读</text></view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get, post } from '../../utils/request.uts'
+
+	type MsgItem = { id : number; type : string; title : string; content : string; is_read : boolean; created_at : string; ref_id : number }
+	type TabItem = { key : string; label : string }
+
+	const tabs = ref<TabItem[]>([
+		{ key: '', label: '全部' }, { key: 'system', label: '系统' },
+		{ key: 'trade', label: '交易' }, { key: 'fund', label: '资金' }, { key: 'announcement', label: '公告' }
+	])
+	const currentTab = ref('')
+	const list = ref<MsgItem[]>([])
+
+	onShow(() => { loadMessages() })
+
+	function switchTab(key : string) { currentTab.value = key; loadMessages() }
+
+	function getTypeText(t : string) : string {
+		if (t == 'system') return '系统'
+		if (t == 'trade') return '交易'
+		if (t == 'fund') return '资金'
+		if (t == 'announcement') return '公告'
+		return t
+	}
+
+	function loadMessages() {
+		let url = '/api/mobile/notification/list?pageSize=50'
+		if (currentTab.value.length > 0) url += `&type=${currentTab.value}`
+		get(url).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				const items = d['list'] as UTSJSONObject[]
+				if (items != null) {
+					const arr : MsgItem[] = []
+					for (let i = 0; i < items.length; i++) {
+						const it = items[i]
+						arr.push({
+							id: (it['id'] as number) ?? 0, type: (it['type'] as string) ?? '',
+							title: (it['title'] as string) ?? '', content: (it['content'] as string) ?? '',
+							is_read: (it['is_read'] as number) == 1, created_at: (it['created_at'] as string) ?? '',
+							ref_id: (it['ref_id'] as number) ?? 0
+						} as MsgItem)
+					}
+					list.value = arr
+				}
+			}
+		}).catch((_e) => {})
+	}
+
+	function markRead(item : MsgItem) {
+		if (!item.is_read) {
+			post(`/api/mobile/notification/${item.id}/read`).then((_r) => { loadMessages() }).catch((_e) => {})
+		}
+		if (item.type == 'announcement' && item.ref_id > 0) {
+			uni.navigateTo({ url: `/pages/mine/announcement-detail?id=${item.ref_id}` })
+		}
+	}
+
+	function readAll() {
+		post('/api/mobile/notification/read-all').then((_r) => {
+			uni.showToast({ title: '已全部已读', icon: 'success' })
+			loadMessages()
+		}).catch((_e) => {})
+	}
+</script>
+
+<style>
+	.msg-page { flex: 1; background-color: #f5f5f5; }
+	.tab-bar { flex-direction: row; background-color: #ffffff; padding: 0 8px; border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: #f0f0f0; }
+	.tab-item { padding: 12px 12px; }
+	.tab-text { font-size: 14px; color: #999999; }
+	.tab-text.active { color: #1890ff; font-weight: bold; }
+	.msg-list { flex: 1; }
+	.empty { padding: 60px; align-items: center; }
+	.empty-text { font-size: 14px; color: #999999; }
+	.msg-item { margin: 8px 16px; padding: 16px; background-color: #ffffff; border-radius: 8px; }
+	.msg-header { flex-direction: row; align-items: center; margin-bottom: 8px; }
+	.msg-type { font-size: 12px; color: #1890ff; background-color: #ecf5ff; padding: 2px 8px; border-radius: 4px; }
+	.unread-dot { width: 8px; height: 8px; border-radius: 4px; background-color: #f56c6c; margin-left: 8px; }
+	.msg-title { font-size: 15px; font-weight: bold; color: #333333; margin-bottom: 6px; }
+	.msg-content { font-size: 13px; color: #666666; margin-bottom: 8px; }
+	.msg-time { font-size: 12px; color: #cccccc; }
+	.read-all-btn { margin: 16px; padding: 12px; background-color: #ffffff; border-radius: 8px; align-items: center; border-width: 1px; border-style: solid; border-color: #1890ff; }
+	.read-all-text { font-size: 14px; color: #1890ff; }
+</style>

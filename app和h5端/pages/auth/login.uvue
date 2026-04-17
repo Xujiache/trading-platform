@@ -1,0 +1,191 @@
+<template>
+	<view class="login-page">
+		<view class="header">
+			<text class="title">欢迎登录</text>
+			<text class="subtitle">黄金白银石油交易系统</text>
+		</view>
+
+		<view class="form-area">
+			<view class="input-group">
+				<text class="label">邮箱</text>
+				<input class="input" type="text" placeholder="请输入邮箱地址" v-model="email" />
+			</view>
+
+			<view class="input-group">
+				<text class="label">密码</text>
+				<view class="password-row">
+					<input class="input flex-1" :type="showPwd ? 'text' : 'password'" placeholder="请输入密码"
+						v-model="password" />
+					<text class="toggle-pwd" @click="showPwd = !showPwd">{{showPwd ? '隐藏' : '显示'}}</text>
+				</view>
+			</view>
+
+			<view class="forgot-row">
+				<text class="forgot-link" @click="goForgot">忘记密码？</text>
+			</view>
+
+			<view class="btn-primary" @click="handleLogin">
+				<text class="btn-text">登 录</text>
+			</view>
+
+			<view class="register-row">
+				<text class="register-hint">还没有账户？</text>
+				<text class="register-link" @click="goRegister">立即注册</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { post } from '../../utils/request.uts'
+
+	const email = ref('')
+	const password = ref('')
+	const showPwd = ref(false)
+
+	function handleLogin() {
+		if (email.value.length == 0) {
+			uni.showToast({ title: '请输入邮箱', icon: 'none' })
+			return
+		}
+		if (password.value.length == 0) {
+			uni.showToast({ title: '请输入密码', icon: 'none' })
+			return
+		}
+
+		uni.showLoading({ title: '登录中...' })
+		post('/api/mobile/auth/login', {
+			email: email.value,
+			password: password.value
+		}).then((res) => {
+			uni.hideLoading()
+			if (res.code == 200 && res.data != null) {
+				const data = res.data as UTSJSONObject
+				uni.setStorageSync('token', data['token'] as string)
+				uni.setStorageSync('refreshToken', data['refreshToken'] as string)
+				uni.setStorageSync('userInfo', JSON.stringify(data['userInfo']))
+				uni.showToast({ title: '登录成功', icon: 'success' })
+				setTimeout(() => {
+					uni.switchTab({ url: '/pages/index/index' })
+				}, 1000)
+			} else {
+				uni.showToast({ title: res.msg, icon: 'none' })
+			}
+		}).catch((_err) => {
+			uni.hideLoading()
+			uni.showToast({ title: '登录失败', icon: 'none' })
+		})
+	}
+
+	function goRegister() {
+		uni.navigateTo({ url: '/pages/auth/register' })
+	}
+
+	function goForgot() {
+		uni.navigateTo({ url: '/pages/auth/forgot-password' })
+	}
+</script>
+
+<style>
+	.login-page {
+		flex: 1;
+		background-color: #ffffff;
+		padding: 40px 30px;
+	}
+
+	.header {
+		margin-top: 60px;
+		margin-bottom: 50px;
+	}
+
+	.title {
+		font-size: 28px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 8px;
+	}
+
+	.subtitle {
+		font-size: 14px;
+		color: #999999;
+	}
+
+	.form-area {
+		flex: 1;
+	}
+
+	.input-group {
+		margin-bottom: 24px;
+	}
+
+	.label {
+		font-size: 14px;
+		color: #666666;
+		margin-bottom: 8px;
+	}
+
+	.input {
+		height: 48px;
+		border: 1px solid #e0e0e0;
+		border-radius: 8px;
+		padding: 0 16px;
+		font-size: 15px;
+	}
+
+	.password-row {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.flex-1 {
+		flex: 1;
+	}
+
+	.toggle-pwd {
+		font-size: 13px;
+		color: #1890ff;
+		padding: 0 12px;
+	}
+
+	.forgot-row {
+		align-items: flex-end;
+		margin-bottom: 30px;
+	}
+
+	.forgot-link {
+		font-size: 13px;
+		color: #1890ff;
+	}
+
+	.btn-primary {
+		height: 48px;
+		background-color: #1890ff;
+		border-radius: 8px;
+		justify-content: center;
+		align-items: center;
+		margin-bottom: 20px;
+	}
+
+	.btn-text {
+		color: #ffffff;
+		font-size: 16px;
+		font-weight: bold;
+	}
+
+	.register-row {
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.register-hint {
+		font-size: 14px;
+		color: #999999;
+	}
+
+	.register-link {
+		font-size: 14px;
+		color: #1890ff;
+		margin-left: 4px;
+	}
+</style>

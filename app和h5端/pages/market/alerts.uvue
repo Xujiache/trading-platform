@@ -1,0 +1,313 @@
+<template>
+	<view class="alerts-page">
+		<scroll-view class="filter-bar" direction="horizontal" :show-scrollbar="false">
+			<view class="filter-list">
+				<view v-for="(f, idx) in filters" :key="idx" class="filter-chip"
+					:class="{'filter-active': activeFilter == idx}" @click="switchFilter(idx)">
+					<text class="filter-text" :class="{'filter-text-active': activeFilter == idx}">{{f.label}}</text>
+				</view>
+			</view>
+		</scroll-view>
+
+		<scroll-view class="alert-list" direction="vertical">
+			<view v-for="(item, idx) in alertList" :key="idx" class="alert-card">
+				<view class="alert-header">
+					<view class="alert-symbol-row">
+						<text class="alert-symbol">{{item.symbol}}</text>
+						<text class="alert-symbol-name">{{item.symbol_name}}</text>
+					</view>
+					<view class="alert-status-badge" :class="getStatusClass(item.status)">
+						<text class="alert-status-text">{{getStatusLabel(item.status)}}</text>
+					</view>
+				</view>
+				<view class="alert-body">
+					<text class="alert-type">{{getTypeLabel(item.alert_type)}}</text>
+					<text class="alert-target">目标值: {{item.target_value}}</text>
+				</view>
+				<view class="alert-footer">
+					<text class="alert-time">{{item.created_at}}</text>
+					<text class="alert-delete" @click="deleteAlert(item.id)">删除</text>
+				</view>
+			</view>
+
+			<view v-if="alertList.length == 0" class="empty-view">
+				<text class="empty-text">暂无预警</text>
+				<text class="empty-action" @click="goAddAlert">去添加预警</text>
+			</view>
+		</scroll-view>
+
+		<view class="fab-btn" @click="goAddAlert">
+			<text class="fab-text">+</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get, del } from '@/utils/request.uts'
+
+	type AlertItem = {
+		id : number
+		symbol : string
+		symbol_name : string
+		alert_type : string
+		target_value : number
+		notify_method : string
+		status : string
+		created_at : string
+	}
+
+	const filters = [
+		{ key: '', label: '全部' },
+		{ key: 'active', label: '生效中' },
+		{ key: 'triggered', label: '已触发' },
+		{ key: 'disabled', label: '已禁用' },
+	]
+
+	const activeFilter = ref(0)
+	const alertList = ref<AlertItem[]>([])
+
+	onLoad(() => {
+		loadAlerts()
+	})
+
+	onShow(() => {
+		loadAlerts()
+	})
+
+	function loadAlerts() {
+		const statusKey = filters[activeFilter.value].key
+		let url = '/api/mobile/market/alerts?limit=50'
+		if (statusKey.length > 0) {
+			url = `${url}&status=${statusKey}`
+		}
+
+		get(url).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const raw = JSON.stringify(res.data)
+				const parsed = JSON.parse<UTSJSONObject>(raw)
+				if (parsed != null) {
+					const itemsRaw = parsed!['items']
+					if (itemsRaw != null) {
+						const arr = JSON.parse<AlertItem[]>(JSON.stringify(itemsRaw!))
+						if (arr != null) {
+							alertList.value = arr!
+						}
+					}
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function switchFilter(idx : number) {
+		activeFilter.value = idx
+		loadAlerts()
+	}
+
+	function deleteAlert(id : number) {
+		uni.showModal({
+			title: '确认删除',
+			content: '确定要删除这条预警吗？',
+			success: (modalRes) => {
+				if (modalRes.confirm) {
+					del(`/api/mobile/market/alerts/${id}`).then((res) => {
+						if (res.code == 200) {
+							uni.showToast({ title: '删除成功', icon: 'success' })
+							loadAlerts()
+						}
+					}).catch((_e : any) => { })
+				}
+			}
+		})
+	}
+
+	function goAddAlert() {
+		uni.navigateTo({ url: '/pages/market/add-alert' })
+	}
+
+	function getTypeLabel(type : string) : string {
+		if (type == 'price_above') return '价格高于'
+		if (type == 'price_below') return '价格低于'
+		if (type == 'change_percent') return '涨跌幅达'
+		return type
+	}
+
+	function getStatusLabel(status : string) : string {
+		if (status == 'active') return '生效中'
+		if (status == 'triggered') return '已触发'
+		if (status == 'disabled') return '已禁用'
+		return status
+	}
+
+	function getStatusClass(status : string) : string {
+		if (status == 'active') return 'status-active'
+		if (status == 'triggered') return 'status-triggered'
+		return 'status-disabled'
+	}
+</script>
+
+<style>
+	.alerts-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.filter-bar {
+		height: 44px;
+		background-color: #ffffff;
+	}
+
+	.filter-list {
+		flex-direction: row;
+		align-items: center;
+		padding: 0 10px;
+		height: 44px;
+	}
+
+	.filter-chip {
+		padding: 6px 14px;
+		margin: 0 4px;
+		border-radius: 16px;
+		background-color: #f5f5f5;
+	}
+
+	.filter-active {
+		background-color: #e6f7ff;
+	}
+
+	.filter-text {
+		font-size: 13px;
+		color: #666666;
+	}
+
+	.filter-text-active {
+		color: #1890FF;
+		font-weight: bold;
+	}
+
+	.alert-list {
+		flex: 1;
+		padding: 10px 15px;
+	}
+
+	.alert-card {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 15px;
+		margin-bottom: 10px;
+	}
+
+	.alert-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.alert-symbol-row {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.alert-symbol {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+		margin-right: 8px;
+	}
+
+	.alert-symbol-name {
+		font-size: 12px;
+		color: #999999;
+	}
+
+	.alert-status-badge {
+		padding: 2px 8px;
+		border-radius: 10px;
+	}
+
+	.status-active {
+		background-color: #e8f5e9;
+	}
+
+	.status-triggered {
+		background-color: #fff3e0;
+	}
+
+	.status-disabled {
+		background-color: #f5f5f5;
+	}
+
+	.alert-status-text {
+		font-size: 11px;
+		color: #666666;
+	}
+
+	.alert-body {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.alert-type {
+		font-size: 14px;
+		color: #666666;
+		margin-right: 8px;
+	}
+
+	.alert-target {
+		font-size: 14px;
+		color: #333333;
+		font-weight: 500;
+	}
+
+	.alert-footer {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.alert-time {
+		font-size: 12px;
+		color: #cccccc;
+	}
+
+	.alert-delete {
+		font-size: 13px;
+		color: #f44336;
+	}
+
+	.empty-view {
+		padding: 80px 0;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.empty-text {
+		font-size: 14px;
+		color: #999999;
+		margin-bottom: 12px;
+	}
+
+	.empty-action {
+		font-size: 14px;
+		color: #1890FF;
+	}
+
+	.fab-btn {
+		position: fixed;
+		right: 20px;
+		bottom: 80px;
+		width: 50px;
+		height: 50px;
+		border-radius: 25px;
+		background-color: #1890FF;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.fab-text {
+		font-size: 28px;
+		color: #ffffff;
+		font-weight: bold;
+	}
+</style>

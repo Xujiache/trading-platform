@@ -1,0 +1,37 @@
+<template>
+	<scroll-view class="about-page" direction="vertical">
+		<view class="content">
+			<text class="title">关于我们</text>
+			<rich-text v-if="richContent.length > 0" :nodes="richContent"></rich-text>
+			<view v-else class="default-content">
+				<text class="paragraph">欢迎使用交易系统，我们致力于为用户提供安全、便捷、专业的贵金属与能源CFD交易服务。</text>
+				<text class="paragraph">我们的团队由资深金融从业者和技术专家组成，拥有丰富的行业经验。</text>
+				<text class="paragraph">如需帮助，请通过在线客服或工单系统联系我们。</text>
+			</view>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { get } from '../../utils/request.uts'
+
+	const richContent = ref('')
+
+	onLoad(() => {
+		get('/api/mobile/content/about_us').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const data = res.data as UTSJSONObject
+				const content = data['content'] as string
+				if (content != null && content.length > 0) { richContent.value = content }
+			}
+		}).catch((_err) => {})
+	})
+</script>
+
+<style>
+	.about-page { flex: 1; background-color: #ffffff; }
+	.content { padding: 20px; }
+	.title { font-size: 22px; font-weight: bold; color: #333333; text-align: center; margin-bottom: 20px; }
+	.default-content { padding: 0; }
+	.paragraph { font-size: 14px; color: #666666; line-height: 24px; margin-bottom: 12px; }
+</style>

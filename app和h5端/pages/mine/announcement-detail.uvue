@@ -1,0 +1,40 @@
+<template>
+	<scroll-view class="detail-page" direction="vertical">
+		<view class="content">
+			<text class="title">{{annoTitle}}</text>
+			<text class="meta">{{publishedAt}} · 浏览 {{viewCount}}</text>
+			<rich-text v-if="annoContent.length > 0" :nodes="annoContent"></rich-text>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { get } from '../../utils/request.uts'
+
+	const annoTitle = ref('')
+	const annoContent = ref('')
+	const publishedAt = ref('')
+	const viewCount = ref(0)
+
+	onLoad((options : OnLoadOptions) => {
+		const id = options['id'] ?? ''
+		if (id.length > 0) {
+			get(`/api/mobile/announcement/${id}`).then((res) => {
+				if (res.code == 200 && res.data != null) {
+					const d = res.data as UTSJSONObject
+					annoTitle.value = (d['title'] as string) ?? ''
+					annoContent.value = (d['content'] as string) ?? ''
+					publishedAt.value = (d['published_at'] as string) ?? ''
+					viewCount.value = (d['view_count'] as number) ?? 0
+				}
+			}).catch((_e) => {})
+		}
+	})
+</script>
+
+<style>
+	.detail-page { flex: 1; background-color: #ffffff; }
+	.content { padding: 20px; }
+	.title { font-size: 20px; font-weight: bold; color: #333333; margin-bottom: 8px; }
+	.meta { font-size: 12px; color: #cccccc; margin-bottom: 20px; }
+</style>

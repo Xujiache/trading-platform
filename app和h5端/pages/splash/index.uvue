@@ -1,0 +1,158 @@
+<template>
+	<view class="splash-container">
+		<view v-if="showAd && adConfig.enabled" class="ad-area">
+			<image v-if="adConfig.imageUrl.length > 0" class="ad-image" :src="adConfig.imageUrl" mode="aspectFill"
+				@click="onAdClick"></image>
+			<view v-else-if="adConfig.richText.length > 0" class="rich-text-area">
+				<rich-text :nodes="adConfig.richText"></rich-text>
+			</view>
+			<view class="skip-btn" @click="skipAd">
+				<text class="skip-text">跳过 {{countdown}}s</text>
+			</view>
+		</view>
+		<view v-else class="brand-area">
+			<text class="brand-title">黄金白银石油交易系统</text>
+			<text class="brand-subtitle">安全 · 专业 · 便捷</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get } from '../../utils/request.uts'
+
+	type AdConfig = {
+		enabled : boolean
+		imageUrl : string
+		linkUrl : string
+		duration : number
+		richText : string
+	}
+
+	const showAd = ref(false)
+	const countdown = ref(3)
+	const adConfig = ref<AdConfig>({
+		enabled: false,
+		imageUrl: '',
+		linkUrl: '',
+		duration: 3,
+		richText: ''
+	})
+	let timer = 0
+
+	onLoad(() => {
+		loadSplashConfig()
+	})
+
+	onUnload(() => {
+		if (timer > 0) {
+			clearInterval(timer)
+		}
+	})
+
+	function loadSplashConfig() {
+		get('/api/mobile/homepage/splash-ad').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const data = res.data as AdConfig
+				adConfig.value = data
+				if (data.enabled) {
+					showAd.value = true
+					countdown.value = data.duration > 0 ? data.duration : 3
+					startCountdown()
+				} else {
+					goHome()
+				}
+			} else {
+				goHome()
+			}
+		}).catch((_err) => {
+			goHome()
+		})
+	}
+
+	function startCountdown() {
+		timer = setInterval(() => {
+			countdown.value--
+			if (countdown.value <= 0) {
+				clearInterval(timer)
+				goHome()
+			}
+		}, 1000)
+	}
+
+	function skipAd() {
+		if (timer > 0) {
+			clearInterval(timer)
+		}
+		goHome()
+	}
+
+	function onAdClick() {
+		if (adConfig.value.linkUrl.length > 0) {
+			const link = adConfig.value.linkUrl
+			if (link.startsWith('/pages')) {
+				uni.navigateTo({ url: link })
+			}
+		}
+	}
+
+	function goHome() {
+		uni.switchTab({ url: '/pages/index/index' })
+	}
+</script>
+
+<style>
+	.splash-container {
+		flex: 1;
+		background-color: #1a1a2e;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.ad-area {
+		flex: 1;
+		width: 100%;
+		position: relative;
+	}
+
+	.ad-image {
+		width: 100%;
+		height: 100%;
+	}
+
+	.skip-btn {
+		position: absolute;
+		top: 60px;
+		right: 20px;
+		background-color: rgba(0, 0, 0, 0.5);
+		border-radius: 20px;
+		padding: 6px 16px;
+	}
+
+	.skip-text {
+		color: #ffffff;
+		font-size: 13px;
+	}
+
+	.brand-area {
+		justify-content: center;
+		align-items: center;
+	}
+
+	.brand-title {
+		color: #ffffff;
+		font-size: 28px;
+		font-weight: bold;
+		margin-bottom: 12px;
+	}
+
+	.brand-subtitle {
+		color: #aaaaaa;
+		font-size: 14px;
+		letter-spacing: 6px;
+	}
+
+	.rich-text-area {
+		flex: 1;
+		padding: 20px;
+	}
+</style>

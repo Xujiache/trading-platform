@@ -1,0 +1,564 @@
+<template>
+	<scroll-view class="detail-page" direction="vertical">
+		<view class="price-section">
+			<view class="price-main">
+				<text class="current-price" :class="symbolData.change >= 0 ? 'price-up' : 'price-down'">
+					{{formatPrice(symbolData.bid, symbolData.price_decimals)}}
+				</text>
+				<text class="price-change" :class="symbolData.change >= 0 ? 'price-up' : 'price-down'">
+					{{symbolData.change >= 0 ? '+' : ''}}{{symbolData.change.toFixed(symbolData.price_decimals)}}
+					({{symbolData.change >= 0 ? '+' : ''}}{{symbolData.change_percent.toFixed(2)}}%)
+				</text>
+			</view>
+			<view class="bid-ask-row">
+				<view class="bid-box">
+					<text class="ba-label">买入价</text>
+					<text class="ba-value price-down">{{formatPrice(symbolData.bid, symbolData.price_decimals)}}</text>
+				</view>
+				<view class="ask-box">
+					<text class="ba-label">卖出价</text>
+					<text class="ba-value price-up">{{formatPrice(symbolData.ask, symbolData.price_decimals)}}</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="info-grid">
+			<view class="info-item">
+				<text class="info-label">最高</text>
+				<text class="info-value">{{formatPrice(symbolData.high, symbolData.price_decimals)}}</text>
+			</view>
+			<view class="info-item">
+				<text class="info-label">最低</text>
+				<text class="info-value">{{formatPrice(symbolData.low, symbolData.price_decimals)}}</text>
+			</view>
+			<view class="info-item">
+				<text class="info-label">开盘</text>
+				<text class="info-value">{{formatPrice(symbolData.open, symbolData.price_decimals)}}</text>
+			</view>
+			<view class="info-item">
+				<text class="info-label">昨收</text>
+				<text class="info-value">{{formatPrice(symbolData.prev_close, symbolData.price_decimals)}}</text>
+			</view>
+		</view>
+
+		<view class="kline-section">
+			<view class="section-header">
+				<text class="section-title">K线图</text>
+				<text class="section-link" @click="goKlineFullscreen">全屏查看</text>
+			</view>
+			<scroll-view class="period-scroll" direction="horizontal" :show-scrollbar="false">
+				<view class="period-list">
+					<view v-for="(p, idx) in periods" :key="idx" class="period-item"
+						:class="{'period-active': activePeriod == idx}" @click="switchPeriod(idx)">
+						<text class="period-text" :class="{'period-text-active': activePeriod == idx}">{{p.label}}</text>
+					</view>
+				</view>
+			</scroll-view>
+			<canvas class="detail-kline-canvas" canvas-id="detailKlineCanvas" id="detailKlineCanvas"
+				style="width: 100%; height: 200px;"></canvas>
+		</view>
+
+		<view class="contract-section">
+			<text class="section-title-inner">合约规格</text>
+			<view class="spec-row">
+				<text class="spec-label">合约单位</text>
+				<text class="spec-value">{{symbolData.contract_unit}}</text>
+			</view>
+			<view class="spec-row">
+				<text class="spec-label">最小手数</text>
+				<text class="spec-value">{{symbolData.min_lot}}</text>
+			</view>
+			<view class="spec-row">
+				<text class="spec-label">最大手数</text>
+				<text class="spec-value">{{symbolData.max_lot}}</text>
+			</view>
+			<view class="spec-row">
+				<text class="spec-label">最大杠杆</text>
+				<text class="spec-value">1:{{symbolData.max_leverage}}</text>
+			</view>
+			<view class="spec-row">
+				<text class="spec-label">点差模式</text>
+				<text class="spec-value">{{symbolData.spread_mode == 'fixed' ? '固定' : '浮动'}}</text>
+			</view>
+			<view class="spec-row">
+				<text class="spec-label">手续费</text>
+				<text class="spec-value">{{symbolData.fee_value}}/手</text>
+			</view>
+		</view>
+
+		<view class="trading-hours-section" v-if="tradingHoursText.length > 0">
+			<text class="section-title-inner">交易时间</text>
+			<view v-for="(item, idx) in tradingHoursText" :key="idx" class="spec-row">
+				<text class="spec-label">{{item.key}}</text>
+				<text class="spec-value">{{item.value}}</text>
+			</view>
+		</view>
+
+		<view class="action-bar">
+			<view class="action-btn btn-sell" @click="onTrade('sell')">
+				<text class="btn-text-white">卖出做空</text>
+			</view>
+			<view class="action-btn btn-buy" @click="onTrade('buy')">
+				<text class="btn-text-white">买入做多</text>
+			</view>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { get } from '@/utils/request.uts'
+	import { connectWebSocket, subscribeSymbols, disconnectWebSocket } from '@/utils/websocket.uts'
+
+	type TradingHourItem = {
+		key : string
+		value : string
+	}
+
+	type SymbolDetail = {
+		id : number
+		symbol : string
+		name : string
+		category : string
+		price_decimals : number
+		bid : number
+		ask : number
+		high : number
+		low : number
+		open : number
+		prev_close : number
+		change : number
+		change_percent : number
+		volume : number
+		contract_unit : string
+		min_lot : number
+		max_lot : number
+		max_leverage : number
+		spread_mode : string
+		fee_value : number
+	}
+
+	type KlineItem = {
+		time : string
+		open : number
+		high : number
+		low : number
+		close : number
+		volume : number
+	}
+
+	const periods = [
+		{ key: '1m', label: '1分' },
+		{ key: '5m', label: '5分' },
+		{ key: '15m', label: '15分' },
+		{ key: '30m', label: '30分' },
+		{ key: '1h', label: '1时' },
+		{ key: '4h', label: '4时' },
+		{ key: '1d', label: '日线' },
+		{ key: '1w', label: '周线' },
+		{ key: '1M', label: '月线' },
+	]
+
+	const symbolId = ref(0)
+	const symbolCode = ref('')
+	const activePeriod = ref(0)
+	const klineData = ref<KlineItem[]>([])
+
+	const symbolData = ref<SymbolDetail>({
+		id: 0, symbol: '', name: '', category: '', price_decimals: 2,
+		bid: 0, ask: 0, high: 0, low: 0, open: 0, prev_close: 0,
+		change: 0, change_percent: 0, volume: 0,
+		contract_unit: '', min_lot: 0.01, max_lot: 100, max_leverage: 100,
+		spread_mode: 'fixed', fee_value: 0,
+	} as SymbolDetail)
+
+	const tradingHoursText = ref<TradingHourItem[]>([])
+	let refreshTimer = 0
+
+	onLoad((options : OnLoadOptions) => {
+		const idStr = options['id'] ?? '0'
+		const sym = options['symbol'] ?? ''
+		symbolId.value = parseInt(idStr)
+		symbolCode.value = sym
+
+		uni.setNavigationBarTitle({ title: sym })
+		loadDetail()
+		loadKline()
+
+		connectWebSocket((tickData : any) => {
+			if (tickData == null) return
+			const obj = tickData as UTSJSONObject
+			const tickSym = obj['symbol'] as string
+			if (tickSym == symbolCode.value) {
+				const sd = symbolData.value
+				sd.bid = obj['bid'] as number
+				sd.ask = obj['ask'] as number
+				sd.high = obj['high'] as number
+				sd.low = obj['low'] as number
+				sd.change = obj['change'] as number
+				sd.change_percent = obj['change_percent'] as number
+				sd.volume = obj['volume'] as number
+				symbolData.value = sd
+			}
+		})
+
+		setTimeout(() => {
+			subscribeSymbols([sym])
+		}, 500)
+	})
+
+	onUnload(() => {
+		if (refreshTimer > 0) clearInterval(refreshTimer)
+		disconnectWebSocket()
+	})
+
+	function loadDetail() {
+		get(`/api/mobile/market/symbols/${symbolId.value}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const raw = JSON.stringify(res.data)
+				const d = JSON.parse<SymbolDetail>(raw)
+				if (d != null) {
+					symbolData.value = d!
+				}
+				const obj = JSON.parse<UTSJSONObject>(raw)
+				if (obj != null) {
+					const th = obj!['trading_hours']
+					if (th != null) {
+						const thObj = th as UTSJSONObject
+						const items : TradingHourItem[] = []
+						const keys = Object.keys(thObj)
+						for (let i = 0; i < keys.length; i++) {
+							const k = keys[i]
+							const label = k == 'mon_fri' ? '周一至周五' : k == 'break' ? '休市时间' : k
+							items.push({ key: label, value: thObj[k] as string } as TradingHourItem)
+						}
+						tradingHoursText.value = items
+					}
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function loadKline() {
+		const period = periods[activePeriod.value].key
+		get(`/api/mobile/market/kline?symbol=${symbolCode.value}&period=${period}&limit=200`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const raw = JSON.stringify(res.data)
+				const parsed = JSON.parse<UTSJSONObject>(raw)
+				if (parsed != null) {
+					const klinesRaw = parsed!['klines']
+					if (klinesRaw != null) {
+						const arr = JSON.parse<KlineItem[]>(JSON.stringify(klinesRaw!))
+						if (arr != null) {
+						klineData.value = arr!
+							setTimeout(() => { drawDetailKline() }, 300)
+					}
+					}
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function switchPeriod(idx : number) {
+		activePeriod.value = idx
+		loadKline()
+	}
+
+	function formatPrice(price : number, decimals : number) : string {
+		return price.toFixed(decimals)
+	}
+
+	function drawDetailKline() {
+		const data = klineData.value
+		if (data.length == 0) return
+		const ctx = uni.createCanvasContext('detailKlineCanvas')
+		const cw = 350
+		const ch = 180
+		const pad = 35
+		const chartW = cw - pad * 2
+		const chartH = ch - pad - 10
+
+		ctx.setFillStyle('#fafafa')
+		ctx.fillRect(0, 0, cw, ch)
+
+		const count = Math.min(data.length, 40)
+		const display = data.slice(data.length - count)
+		let minP = display[0].low
+		let maxP = display[0].high
+		for (let i = 1; i < display.length; i++) {
+			if (display[i].low < minP) minP = display[i].low
+			if (display[i].high > maxP) maxP = display[i].high
+		}
+		const range = maxP - minP
+		if (range == 0) return
+		const margin = range * 0.05
+		minP -= margin
+		maxP += margin
+		const total = maxP - minP
+
+		ctx.setStrokeStyle('#e0e0e0')
+		ctx.setLineWidth(0.5)
+		for (let i = 0; i <= 3; i++) {
+			const y = 10 + (chartH / 3) * i
+			ctx.beginPath()
+			ctx.moveTo(pad, y)
+			ctx.lineTo(pad + chartW, y)
+			ctx.stroke()
+			ctx.setFillStyle('#999999')
+			ctx.setFontSize(8)
+			const price = maxP - (total / 3) * i
+			ctx.fillText(price.toFixed(2), 1, y + 3)
+		}
+
+		const barW = chartW / count
+		const bodyW = barW * 0.6
+		for (let i = 0; i < display.length; i++) {
+			const k = display[i]
+			const x = pad + barW * i + barW / 2
+			const isUp = k.close >= k.open
+			const color = isUp ? '#4caf50' : '#f44336'
+			const openY = 10 + ((maxP - k.open) / total) * chartH
+			const closeY = 10 + ((maxP - k.close) / total) * chartH
+			const highY = 10 + ((maxP - k.high) / total) * chartH
+			const lowY = 10 + ((maxP - k.low) / total) * chartH
+
+			ctx.setStrokeStyle(color)
+			ctx.setLineWidth(1)
+			ctx.beginPath()
+			ctx.moveTo(x, highY)
+			ctx.lineTo(x, lowY)
+			ctx.stroke()
+
+			ctx.setFillStyle(color)
+			const top = Math.min(openY, closeY)
+			const h = Math.max(Math.abs(closeY - openY), 1)
+			ctx.fillRect(x - bodyW / 2, top, bodyW, h)
+		}
+		ctx.draw()
+	}
+
+	function goKlineFullscreen() {
+		uni.navigateTo({
+			url: `/pages/market/kline?symbol=${symbolCode.value}&period=${periods[activePeriod.value].key}`
+		})
+	}
+
+	function onTrade(_direction : string) {
+		uni.showToast({ title: '交易功能将在后续阶段开发', icon: 'none' })
+	}
+</script>
+
+<style>
+	.detail-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.price-section {
+		background-color: #ffffff;
+		padding: 20px 15px;
+	}
+
+	.price-main {
+		align-items: flex-start;
+		margin-bottom: 15px;
+	}
+
+	.current-price {
+		font-size: 32px;
+		font-weight: bold;
+	}
+
+	.price-change {
+		font-size: 14px;
+		margin-top: 4px;
+	}
+
+	.price-up {
+		color: #4caf50;
+	}
+
+	.price-down {
+		color: #f44336;
+	}
+
+	.bid-ask-row {
+		flex-direction: row;
+	}
+
+	.bid-box,
+	.ask-box {
+		flex: 1;
+		padding: 10px;
+		border-radius: 6px;
+		background-color: #fafafa;
+		margin: 0 4px;
+	}
+
+	.ba-label {
+		font-size: 12px;
+		color: #999999;
+		margin-bottom: 4px;
+	}
+
+	.ba-value {
+		font-size: 18px;
+		font-weight: bold;
+	}
+
+	.info-grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+		background-color: #ffffff;
+		padding: 10px 15px;
+		margin-top: 8px;
+	}
+
+	.info-item {
+		width: 50%;
+		padding: 6px 0;
+		flex-direction: row;
+		justify-content: space-between;
+		padding-right: 15px;
+	}
+
+	.info-label {
+		font-size: 13px;
+		color: #999999;
+	}
+
+	.info-value {
+		font-size: 13px;
+		color: #333333;
+	}
+
+	.kline-section {
+		background-color: #ffffff;
+		margin-top: 8px;
+		padding: 15px;
+	}
+
+	.section-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.section-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+	}
+
+	.section-link {
+		font-size: 13px;
+		color: #1890FF;
+	}
+
+	.period-scroll {
+		height: 36px;
+		margin-bottom: 10px;
+	}
+
+	.period-list {
+		flex-direction: row;
+		height: 36px;
+		align-items: center;
+	}
+
+	.period-item {
+		padding: 4px 10px;
+		margin-right: 6px;
+		border-radius: 4px;
+		background-color: #f5f5f5;
+	}
+
+	.period-active {
+		background-color: #e6f7ff;
+	}
+
+	.period-text {
+		font-size: 12px;
+		color: #666666;
+	}
+
+	.period-text-active {
+		color: #1890FF;
+		font-weight: bold;
+	}
+
+	.detail-kline-canvas {
+		height: 200px;
+		background-color: #fafafa;
+		border-radius: 8px;
+	}
+
+
+	.contract-section {
+		background-color: #ffffff;
+		margin-top: 8px;
+		padding: 15px;
+	}
+
+	.section-title-inner {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 12px;
+	}
+
+	.spec-row {
+		flex-direction: row;
+		justify-content: space-between;
+		padding: 8px 0;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #f0f0f0;
+		border-bottom-style: solid;
+	}
+
+	.spec-label {
+		font-size: 14px;
+		color: #999999;
+	}
+
+	.spec-value {
+		font-size: 14px;
+		color: #333333;
+	}
+
+	.trading-hours-section {
+		background-color: #ffffff;
+		margin-top: 8px;
+		padding: 15px;
+	}
+
+	.action-bar {
+		flex-direction: row;
+		padding: 15px;
+		background-color: #ffffff;
+		margin-top: 8px;
+	}
+
+	.action-btn {
+		flex: 1;
+		height: 44px;
+		border-radius: 6px;
+		justify-content: center;
+		align-items: center;
+		margin: 0 4px;
+	}
+
+	.btn-sell {
+		background-color: #f44336;
+	}
+
+	.btn-buy {
+		background-color: #4caf50;
+	}
+
+	.btn-text-white {
+		color: #ffffff;
+		font-size: 16px;
+		font-weight: bold;
+	}
+</style>

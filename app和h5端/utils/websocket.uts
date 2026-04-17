@@ -1,0 +1,113 @@
+const WS_URL = 'ws://localhost:3000/ws/market'
+
+type WsCallback = (data : any) => void
+
+let socketTask : UniNamespace.SocketTask | null = null
+let isConnected = false
+let reconnectTimer = 0
+let heartbeatTimer = 0
+let onTickCallback : WsCallback | null = null
+let subscribedSymbols : string[] = []
+
+export function connectWebSocket(onTick : WsCallback) {
+	onTickCallback = onTick
+
+	socketTask = uni.connectSocket({
+		url: WS_URL,
+		complete: () => { }
+	})
+
+	socketTask!.onOpen(() => {
+		isConnected = true
+		startHeartbeat()
+		if (subscribedSymbols.length > 0) {
+			sendSubscribe(subscribedSymbols)
+		}
+	})
+
+	socketTask!.onMessage((res) => {
+		const raw = res.data as string
+		const msg = JSON.parse<UTSJSONObject>(raw)
+		if (msg == null) return
+
+		const msgType = msg['type'] as string
+
+		if (msgType == 'tick' && onTickCallback != null) {
+			const tickData = msg['data']
+			onTickCallback!(tickData)
+		}
+	})
+
+	socketTask!.onClose(() => {
+		isConnected = false
+		stopHeartbeat()
+		scheduleReconnect()
+	})
+
+	socketTask!.onError(() => {
+		isConnected = false
+		scheduleReconnect()
+	})
+}
+
+export function subscribeSymbols(symbols : string[]) {
+	subscribedSymbols = symbols
+	if (isConnected) {
+		sendSubscribe(symbols)
+	}
+}
+
+export function unsubscribeSymbols(symbols : string[]) {
+	if (isConnected && socketTask != null) {
+		const msg = JSON.stringify({ type: 'unsubscribe', data: { symbols: symbols } })
+		socketTask!.send({ data: msg, complete: () => { } })
+	}
+}
+
+export function disconnectWebSocket() {
+	stopHeartbeat()
+	if (reconnectTimer > 0) {
+		clearTimeout(reconnectTimer)
+		reconnectTimer = 0
+	}
+	subscribedSymbols = []
+	onTickCallback = null
+	if (socketTask != null) {
+		socketTask!.close({ code: 1000, reason: 'user close', complete: () => { } })
+		socketTask = null
+	}
+	isConnected = false
+}
+
+function sendSubscribe(symbols : string[]) {
+	if (socketTask == null) return
+	const msg = JSON.stringify({ type: 'subscribe', data: { symbols: symbols } })
+	socketTask!.send({ data: msg, complete: () => { } })
+}
+
+function startHeartbeat() {
+	stopHeartbeat()
+	heartbeatTimer = setInterval(() => {
+		if (isConnected && socketTask != null) {
+			const msg = JSON.stringify({ type: 'ping' })
+			socketTask!.send({ data: msg, complete: () => { } })
+		}
+	}, 25000) as number
+}
+
+function stopHeartbeat() {
+	if (heartbeatTimer > 0) {
+		clearInterval(heartbeatTimer)
+		heartbeatTimer = 0
+	}
+}
+
+function scheduleReconnect() {
+	if (reconnectTimer > 0) return
+	reconnectTimer = setTimeout(() => {
+		reconnectTimer = 0
+		if (onTickCallback != null) {
+			connectWebSocket(onTickCallback!)
+		}
+	}, 3000) as number
+}

@@ -1,0 +1,385 @@
+<template>
+	<view class="bankcard-page">
+		<scroll-view class="cards-scroll" direction="vertical">
+			<view v-for="(card, idx) in cards" :key="idx" class="card-item">
+				<view class="card-header">
+					<text class="card-type">{{getTypeText(card.card_type)}}</text>
+					<text v-if="card.is_default == 1" class="default-badge">默认</text>
+				</view>
+				<view class="card-body">
+					<text class="card-name" v-if="card.account_name != ''">{{card.account_name}}</text>
+					<text class="card-no">{{card.account_no}}</text>
+				</view>
+				<view class="card-actions">
+					<view v-if="card.is_default != 1" class="card-btn" @click="setDefault(card.id)">
+						<text class="btn-text">设为默认</text>
+					</view>
+					<view class="card-btn card-btn-danger" @click="removeCard(card.id)">
+						<text class="btn-text btn-text-danger">删除</text>
+					</view>
+				</view>
+			</view>
+			<view v-if="cards.length == 0" class="empty-view">
+				<text class="empty-text">暂无收款账户</text>
+			</view>
+		</scroll-view>
+
+		<view class="add-section">
+			<text class="section-title">添加收款账户</text>
+			<view class="form-group">
+				<text class="form-label">账户类型</text>
+				<view class="type-row">
+					<view v-for="(t, idx) in typeOptions" :key="idx" class="type-item"
+						:class="{'type-active': newCard.cardType == t.value}" @click="newCard.cardType = t.value">
+						<text class="type-text" :class="{'type-text-active': newCard.cardType == t.value}">{{t.label}}</text>
+					</view>
+				</view>
+			</view>
+			<view class="form-group">
+				<text class="form-label">账户名称/备注</text>
+				<input class="form-input" v-model="newCard.accountName" placeholder="请输入名称" />
+			</view>
+			<view class="form-group">
+				<text class="form-label">{{newCard.cardType == 'usdt' ? 'USDT-TRC20 地址' : '账号'}}</text>
+				<input class="form-input" v-model="newCard.accountNo"
+					:placeholder="newCard.cardType == 'usdt' ? '请输入TRC20地址' : '请输入账号'" />
+			</view>
+			<view class="form-group" v-if="newCard.cardType != 'usdt'">
+				<text class="form-label">收款二维码（选填）</text>
+				<view class="qrcode-upload" @click="chooseQrcode">
+					<image v-if="qrcodeUrl != ''" :src="qrcodeUrl" class="qrcode-preview" mode="aspectFit" />
+					<view v-else class="qrcode-placeholder">
+						<text class="qrcode-plus">+</text>
+						<text class="qrcode-hint">上传二维码</text>
+					</view>
+				</view>
+			</view>
+			<view class="add-btn" @click="addCard">
+				<text class="add-btn-text">添加</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get, post, put, del } from '@/utils/request.uts'
+
+	type BankCard = {
+		id : number
+		card_type : string
+		account_name : string
+		account_no : string
+		is_default : number
+	}
+
+	type NewCardForm = {
+		cardType : string
+		accountName : string
+		accountNo : string
+	}
+
+	type TypeOption = {
+		label : string
+		value : string
+	}
+
+	const typeOptions : TypeOption[] = [
+		{ label: '微信', value: 'wechat' } as TypeOption,
+		{ label: '支付宝', value: 'alipay' } as TypeOption,
+		{ label: 'USDT', value: 'usdt' } as TypeOption,
+	]
+
+	const cards = ref([] as BankCard[])
+	const newCard = reactive({ cardType: 'wechat', accountName: '', accountNo: '' } as NewCardForm)
+	const qrcodeUrl = ref('')
+
+	function getTypeText(t : string) : string {
+		if (t == 'wechat') return '微信'
+		if (t == 'alipay') return '支付宝'
+		if (t == 'usdt') return 'USDT-TRC20'
+		return t
+	}
+
+	function loadCards() {
+		get('/api/mobile/fund/bank-cards').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const list = res.data as UTSJSONObject[]
+				cards.value = list.map((item : UTSJSONObject) : BankCard => {
+					return {
+						id: (item['id'] as number) ?? 0,
+						card_type: (item['card_type'] as string) ?? '',
+						account_name: (item['account_name'] as string) ?? '',
+						account_no: (item['account_no'] as string) ?? '',
+						is_default: (item['is_default'] as number) ?? 0,
+					} as BankCard
+				})
+			}
+		})
+	}
+
+	function chooseQrcode() {
+		uni.chooseImage({
+			count: 1,
+			sizeType: ['compressed'],
+			success: (chooseRes) => {
+				const tempPath = chooseRes.tempFilePaths[0]
+				const token = uni.getStorageSync('token') as string
+				uni.uploadFile({
+					url: 'http://localhost:3000/api/mobile/fund/upload-qrcode',
+					filePath: tempPath,
+					name: 'file',
+					header: { 'Authorization': `Bearer ${token}` },
+					success: (uploadRes) => {
+						const data = JSON.parse<UTSJSONObject>(uploadRes.data as string)
+						if (data != null && (data!['code'] as number) == 200) {
+							const d = data!['data'] as UTSJSONObject
+							qrcodeUrl.value = (d['url'] as string) ?? ''
+							uni.showToast({ title: '上传成功', icon: 'success' })
+						}
+					},
+					fail: (_e) => {
+						uni.showToast({ title: '上传失败', icon: 'none' })
+					}
+				})
+			}
+		})
+	}
+
+	function addCard() {
+		if (newCard.accountNo.length == 0) {
+			uni.showToast({ title: '请输入账号', icon: 'none' })
+			return
+		}
+		const data = {
+			cardType: newCard.cardType,
+			accountName: newCard.accountName,
+			accountNo: newCard.accountNo,
+		} as UTSJSONObject
+		if (qrcodeUrl.value.length > 0) {
+			data['qrcodeImage'] = qrcodeUrl.value
+		}
+		post('/api/mobile/fund/bank-cards', data).then((res) => {
+			if (res.code == 201) {
+				uni.showToast({ title: '添加成功', icon: 'success' })
+				newCard.accountName = ''
+				newCard.accountNo = ''
+				qrcodeUrl.value = ''
+				loadCards()
+			} else {
+				uni.showToast({ title: res.msg, icon: 'none' })
+			}
+		})
+	}
+
+	function setDefault(id : number) {
+		put(`/api/mobile/fund/bank-cards/${id}/default`).then((res) => {
+			if (res.code == 200) {
+				uni.showToast({ title: '已设为默认', icon: 'success' })
+				loadCards()
+			}
+		})
+	}
+
+	function removeCard(id : number) {
+		uni.showModal({
+			title: '确认删除',
+			content: '确定要删除这个收款账户吗？',
+			success: (result) => {
+				if (result.confirm) {
+					del(`/api/mobile/fund/bank-cards/${id}`).then((res) => {
+						if (res.code == 200) {
+							uni.showToast({ title: '已删除', icon: 'success' })
+							loadCards()
+						}
+					})
+				}
+			}
+		})
+	}
+
+	onShow(() => { loadCards() })
+</script>
+
+<style>
+	.bankcard-page {
+		flex: 1;
+		background-color: #f5f5f5;
+		padding: 16px;
+	}
+
+	.cards-scroll {
+		max-height: 300px;
+		margin-bottom: 16px;
+	}
+
+	.card-item {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 12px;
+	}
+
+	.card-header {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 8px;
+	}
+
+	.card-type {
+		font-size: 15px;
+		font-weight: bold;
+		color: #333333;
+		margin-right: 8px;
+	}
+
+	.default-badge {
+		font-size: 11px;
+		color: #1890FF;
+		background-color: #e6f7ff;
+		padding: 2px 6px;
+		border-radius: 3px;
+	}
+
+	.card-body { margin-bottom: 10px; }
+
+	.card-name {
+		font-size: 14px;
+		color: #666666;
+		margin-bottom: 4px;
+	}
+
+	.card-no {
+		font-size: 13px;
+		color: #999999;
+	}
+
+	.card-actions {
+		flex-direction: row;
+		justify-content: flex-end;
+	}
+
+	.card-btn {
+		padding: 6px 16px;
+		border-radius: 4px;
+		background-color: #f5f5f5;
+		margin-left: 10px;
+	}
+
+	.card-btn-danger {
+		background-color: #fff2f0;
+	}
+
+	.btn-text {
+		font-size: 13px;
+		color: #1890FF;
+	}
+
+	.btn-text-danger {
+		color: #ff4d4f;
+	}
+
+	.add-section {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+	}
+
+	.section-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 16px;
+	}
+
+	.form-group {
+		margin-bottom: 16px;
+	}
+
+	.form-label {
+		font-size: 14px;
+		color: #666666;
+		margin-bottom: 8px;
+	}
+
+	.form-input {
+		font-size: 15px;
+		color: #333333;
+		padding: 10px;
+		background-color: #f9f9f9;
+		border-radius: 6px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #e8e8e8;
+	}
+
+	.type-row {
+		flex-direction: row;
+	}
+
+	.type-item {
+		padding: 8px 16px;
+		border-radius: 6px;
+		background-color: #f5f5f5;
+		margin-right: 10px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #e8e8e8;
+	}
+
+	.type-active {
+		background-color: #e6f7ff;
+		border-color: #1890FF;
+	}
+
+	.type-text { font-size: 14px; color: #666666; }
+	.type-text-active { color: #1890FF; }
+
+	.add-btn {
+		background-color: #1890FF;
+		border-radius: 8px;
+		padding: 14px;
+		align-items: center;
+		margin-top: 8px;
+	}
+
+	.add-btn-text {
+		font-size: 15px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+
+	.qrcode-upload {
+		width: 120px;
+		height: 120px;
+		border-radius: 8px;
+		border-width: 1px;
+		border-style: dashed;
+		border-color: #d9d9d9;
+		justify-content: center;
+		align-items: center;
+		overflow: hidden;
+	}
+
+	.qrcode-preview {
+		width: 120px;
+		height: 120px;
+	}
+
+	.qrcode-placeholder {
+		align-items: center;
+	}
+
+	.qrcode-plus {
+		font-size: 30px;
+		color: #cccccc;
+	}
+
+	.qrcode-hint {
+		font-size: 12px;
+		color: #999999;
+		margin-top: 4px;
+	}
+
+	.empty-view { padding: 30px 0; align-items: center; }
+	.empty-text { font-size: 14px; color: #999999; }
+</style>

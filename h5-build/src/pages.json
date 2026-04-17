@@ -1,0 +1,290 @@
+{
+	"pages": [
+		{
+			"path": "pages/splash/index",
+			"style": {
+				"navigationStyle": "custom",
+				"navigationBarTitleText": ""
+			}
+		},
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "首页"
+			}
+		},
+		{
+			"path": "pages/market/index",
+			"style": {
+				"navigationBarTitleText": "行情"
+			}
+		},
+		{
+			"path": "pages/trade/index",
+			"style": {
+				"navigationBarTitleText": "交易"
+			}
+		},
+		{
+			"path": "pages/assets/index",
+			"style": {
+				"navigationBarTitleText": "资产"
+			}
+		},
+		{
+			"path": "pages/mine/index",
+			"style": {
+				"navigationBarTitleText": "我的"
+			}
+		},
+		{
+			"path": "pages/auth/login",
+			"style": {
+				"navigationBarTitleText": "登录"
+			}
+		},
+		{
+			"path": "pages/auth/register",
+			"style": {
+				"navigationBarTitleText": "注册"
+			}
+		},
+		{
+			"path": "pages/auth/forgot-password",
+			"style": {
+				"navigationBarTitleText": "找回密码"
+			}
+		},
+		{
+			"path": "pages/market/detail",
+			"style": {
+				"navigationBarTitleText": "品种详情"
+			}
+		},
+		{
+			"path": "pages/market/kline",
+			"style": {
+				"navigationBarTitleText": "K线图",
+				"navigationBarBackgroundColor": "#16213e",
+				"navigationBarTextStyle": "white"
+			}
+		},
+		{
+			"path": "pages/market/alerts",
+			"style": {
+				"navigationBarTitleText": "价格预警"
+			}
+		},
+		{
+			"path": "pages/market/add-alert",
+			"style": {
+				"navigationBarTitleText": "新增预警"
+			}
+		},
+		{
+			"path": "pages/trade/place-order",
+			"style": {
+				"navigationBarTitleText": "下单"
+			}
+		},
+		{
+			"path": "pages/trade/order-detail",
+			"style": {
+				"navigationBarTitleText": "订单详情"
+			}
+		},
+		{
+			"path": "pages/assets/deposit",
+			"style": {
+				"navigationBarTitleText": "入金"
+			}
+		},
+		{
+			"path": "pages/assets/deposit-records",
+			"style": {
+				"navigationBarTitleText": "入金记录"
+			}
+		},
+		{
+			"path": "pages/assets/withdraw",
+			"style": {
+				"navigationBarTitleText": "出金"
+			}
+		},
+		{
+			"path": "pages/assets/withdraw-records",
+			"style": {
+				"navigationBarTitleText": "出金记录"
+			}
+		},
+		{
+			"path": "pages/assets/flows",
+			"style": {
+				"navigationBarTitleText": "资金流水"
+			}
+		},
+		{
+			"path": "pages/assets/bank-card",
+			"style": {
+				"navigationBarTitleText": "收款账户"
+			}
+		},
+		{
+			"path": "pages/mine/report",
+			"style": {
+				"navigationBarTitleText": "交易报表"
+			}
+		},
+		{
+			"path": "pages/index/activities",
+			"style": {
+				"navigationBarTitleText": "热门活动"
+			}
+		},
+		{
+			"path": "pages/index/activity-detail",
+			"style": {
+				"navigationBarTitleText": "活动详情"
+			}
+		},
+		{
+			"path": "pages/mine/agreement",
+			"style": {
+				"navigationBarTitleText": "用户协议"
+			}
+		},
+		{
+			"path": "pages/mine/privacy",
+			"style": {
+				"navigationBarTitleText": "隐私政策"
+			}
+		},
+		{
+			"path": "pages/mine/kyc",
+			"style": {
+				"navigationBarTitleText": "实名认证"
+			}
+		},
+		{
+			"path": "pages/mine/risk-assessment",
+			"style": {
+				"navigationBarTitleText": "风险测评"
+			}
+		},
+		{
+			"path": "pages/mine/two-factor",
+			"style": {
+				"navigationBarTitleText": "两步验证"
+			}
+		},
+		{
+			"path": "pages/mine/messages",
+			"style": {
+				"navigationBarTitleText": "消息中心"
+			}
+		},
+		{
+			"path": "pages/mine/help",
+			"style": {
+				"navigationBarTitleText": "帮助中心"
+			}
+		},
+		{
+			"path": "pages/mine/help-detail",
+			"style": {
+				"navigationBarTitleText": "帮助详情"
+			}
+		},
+		{
+			"path": "pages/mine/ticket-list",
+			"style": {
+				"navigationBarTitleText": "我的工单"
+			}
+		},
+		{
+			"path": "pages/mine/ticket-create",
+			"style": {
+				"navigationBarTitleText": "创建工单"
+			}
+		},
+		{
+			"path": "pages/mine/ticket-detail",
+			"style": {
+				"navigationBarTitleText": "工单详情"
+			}
+		},
+		{
+			"path": "pages/mine/chat",
+			"style": {
+				"navigationBarTitleText": "在线客服"
+			}
+		},
+		{
+			"path": "pages/mine/about",
+			"style": {
+				"navigationBarTitleText": "关于我们"
+			}
+		},
+		{
+			"path": "pages/mine/announcement-detail",
+			"style": {
+				"navigationBarTitleText": "公告详情"
+			}
+		},
+		{
+			"path": "pages/mine/edit-profile",
+			"style": {
+				"navigationBarTitleText": "编辑资料"
+			}
+		},
+		{
+			"path": "pages/mine/change-password",
+			"style": {
+				"navigationBarTitleText": "修改密码"
+			}
+		},
+		{
+			"path": "pages/mine/settings",
+			"style": {
+				"navigationBarTitleText": "账户设置"
+			}
+		}
+	],
+	"globalStyle": {
+		"navigationStyle": "custom",
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "交易系统",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F5F5F5"
+	},
+	"tabBar": {
+		"custom": true,
+		"color": "#999999",
+		"selectedColor": "#2563EB",
+		"borderStyle": "black",
+		"backgroundColor": "#FFFFFF",
+		"list": [
+			{
+				"pagePath": "pages/index/index",
+				"text": "首页"
+			},
+			{
+				"pagePath": "pages/market/index",
+				"text": "行情"
+			},
+			{
+				"pagePath": "pages/trade/index",
+				"text": "交易"
+			},
+			{
+				"pagePath": "pages/assets/index",
+				"text": "资产"
+			},
+			{
+				"pagePath": "pages/mine/index",
+				"text": "我的"
+			}
+		]
+	},
+	"uniIdRouter": {}
+}

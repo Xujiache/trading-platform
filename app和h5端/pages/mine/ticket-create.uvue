@@ -1,0 +1,67 @@
+<template>
+	<scroll-view class="create-page" direction="vertical">
+		<view class="form-section">
+			<view class="form-item">
+				<text class="label">分类</text>
+				<view class="cat-bar">
+					<view v-for="c in catOptions" :key="c.value" :class="['cat-opt', { active: category == c.value }]"
+						@click="category = c.value">
+						<text :class="['cat-opt-text', { active: category == c.value }]">{{c.label}}</text>
+					</view>
+				</view>
+			</view>
+			<view class="form-item">
+				<text class="label">标题</text>
+				<input class="input" v-model="title" placeholder="请输入工单标题" />
+			</view>
+			<view class="form-item">
+				<text class="label">描述</text>
+				<textarea class="textarea" v-model="content" placeholder="请详细描述您的问题" />
+			</view>
+			<view class="submit-btn" @click="submitTicket">
+				<text class="submit-text">提交工单</text>
+			</view>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { post } from '../../utils/request.uts'
+
+	type CatOpt = { value : string; label : string }
+
+	const catOptions = ref<CatOpt[]>([
+		{ value: 'trade', label: '交易' }, { value: 'fund', label: '资金' },
+		{ value: 'account', label: '账户' }, { value: 'technical', label: '技术' }, { value: 'other', label: '其他' }
+	])
+	const category = ref('other')
+	const title = ref('')
+	const content = ref('')
+
+	function submitTicket() {
+		if (title.value.length == 0) { uni.showToast({ title: '请输入标题', icon: 'none' }); return }
+		if (content.value.length == 0) { uni.showToast({ title: '请输入描述', icon: 'none' }); return }
+		post('/api/mobile/ticket', { category: category.value, title: title.value, content: content.value } as UTSJSONObject).then((res) => {
+			if (res.code == 200 || res.code == 201) {
+				uni.showToast({ title: '创建成功', icon: 'success' })
+				setTimeout(() => { uni.navigateBack() }, 1500)
+			} else { uni.showToast({ title: res.msg, icon: 'none' }) }
+		}).catch((_e) => {})
+	}
+</script>
+
+<style>
+	.create-page { flex: 1; background-color: #f5f5f5; }
+	.form-section { margin: 16px; padding: 20px; background-color: #ffffff; border-radius: 8px; }
+	.form-item { margin-bottom: 20px; }
+	.label { font-size: 14px; color: #666666; margin-bottom: 8px; font-weight: bold; }
+	.input { border-width: 1px; border-style: solid; border-color: #dcdfe6; border-radius: 4px; padding: 10px 12px; font-size: 14px; }
+	.textarea { border-width: 1px; border-style: solid; border-color: #dcdfe6; border-radius: 4px; padding: 10px 12px; font-size: 14px; height: 120px; }
+	.cat-bar { flex-direction: row; flex-wrap: wrap; }
+	.cat-opt { padding: 6px 16px; border-radius: 16px; background-color: #f5f5f5; margin-right: 8px; margin-bottom: 8px; }
+	.cat-opt.active { background-color: #1890ff; }
+	.cat-opt-text { font-size: 13px; color: #666666; }
+	.cat-opt-text.active { color: #ffffff; }
+	.submit-btn { padding: 14px; background-color: #1890ff; border-radius: 8px; align-items: center; }
+	.submit-text { font-size: 16px; color: #ffffff; font-weight: bold; }
+</style>

@@ -1,0 +1,445 @@
+<template>
+	<view class="withdraw-page">
+		<view class="balance-card">
+			<text class="balance-label">可用余额(实盘)</text>
+			<text class="balance-value">${{formatMoney(availableBalance)}}</text>
+		</view>
+
+		<view class="method-section">
+			<text class="section-title">出金方式</text>
+			<view class="method-list">
+				<view v-for="(m, idx) in methods" :key="idx" class="method-item"
+					:class="{'method-active': selectedMethod == m.value}" @click="selectedMethod = m.value">
+					<text class="method-name">{{m.label}}</text>
+					<view v-if="selectedMethod == m.value" class="method-check">
+						<text class="check-icon">✓</text>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<view class="card-section" v-if="filteredCards.length > 0">
+			<text class="section-title">选择收款账户</text>
+			<view v-for="(card, idx) in filteredCards" :key="idx" class="card-item"
+				:class="{'card-active': selectedCardId == card.id}" @click="selectCard(card)">
+				<text class="card-name">{{card.account_name || card.account_no}}</text>
+				<text v-if="card.is_default == 1" class="default-tag">默认</text>
+			</view>
+		</view>
+
+		<view class="amount-section">
+			<text class="section-title">出金金额</text>
+			<view class="amount-input-wrap">
+				<text class="currency-symbol">$</text>
+				<input class="amount-input" type="digit" v-model="amount" placeholder="请输入出金金额"
+					@input="onAmountChange" />
+			</view>
+			<view class="fee-info">
+				<text class="fee-text">手续费: ${{formatMoney(fee)}}</text>
+				<text class="fee-text">实际到账: ${{formatMoney(actualAmount)}}</text>
+			</view>
+		</view>
+
+		<view class="qrcode-section" v-if="selectedMethod != 'usdt'">
+			<text class="section-title">收款二维码（选填）</text>
+			<view class="qrcode-upload" @click="uploadQrcode">
+				<image v-if="qrcodeImage != ''" :src="qrcodeImage" class="qrcode-preview" mode="aspectFit" />
+				<view v-else class="qrcode-placeholder">
+					<text class="qrcode-plus">+</text>
+					<text class="qrcode-hint">上传二维码</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="remark-section">
+			<text class="section-title">备注(选填)</text>
+			<input class="remark-input" v-model="remark" placeholder="出金备注" />
+		</view>
+
+		<view class="submit-btn" @click="submitWithdraw">
+			<text class="submit-text">提交出金申请</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get, post } from '@/utils/request.uts'
+
+	type MethodOption = {
+		label : string
+		value : string
+	}
+
+	type BankCard = {
+		id : number
+		card_type : string
+		account_name : string
+		account_no : string
+		is_default : number
+	}
+
+	const methods : MethodOption[] = [
+		{ label: '微信', value: 'wechat' } as MethodOption,
+		{ label: '支付宝', value: 'alipay' } as MethodOption,
+		{ label: 'USDT', value: 'usdt' } as MethodOption,
+	]
+
+	const selectedMethod = ref('wechat')
+	const amount = ref('')
+	const remark = ref('')
+	const fee = ref(0.0)
+	const actualAmount = ref(0.0)
+	const availableBalance = ref(0.0)
+	const bankCards = ref([] as BankCard[])
+	const selectedCardId = ref(0)
+	const qrcodeImage = ref('')
+
+	const filteredCards = computed(() : BankCard[] => {
+		return bankCards.value.filter((c : BankCard) : boolean => c.card_type == selectedMethod.value)
+	})
+
+	function formatMoney(val : number) : string {
+		return val.toFixed(2)
+	}
+
+	function selectCard(card : BankCard) {
+		selectedCardId.value = card.id
+	}
+
+	function onAmountChange() {
+		const amt = parseFloat(amount.value)
+		if (isNaN(amt) || amt <= 0) {
+			fee.value = 0
+			actualAmount.value = 0
+			return
+		}
+		get(`/api/mobile/fund/withdraw-fee?amount=${amt}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				fee.value = (d['fee'] as number) ?? 0
+				actualAmount.value = (d['actualAmount'] as number) ?? 0
+			}
+		})
+	}
+
+	function loadData() {
+		get('/api/mobile/fund/account?accountType=real').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				availableBalance.value = (d['availableMargin'] as number) ?? 0
+			}
+		})
+		get('/api/mobile/fund/bank-cards').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const list = res.data as UTSJSONObject[]
+				bankCards.value = list.map((item : UTSJSONObject) : BankCard => {
+					return {
+						id: (item['id'] as number) ?? 0,
+						card_type: (item['card_type'] as string) ?? '',
+						account_name: (item['account_name'] as string) ?? '',
+						account_no: (item['account_no'] as string) ?? '',
+						is_default: (item['is_default'] as number) ?? 0,
+					} as BankCard
+				})
+				const defaultCard = bankCards.value.find((c : BankCard) : boolean => c.is_default == 1)
+				if (defaultCard != null) {
+					selectedCardId.value = defaultCard.id
+				}
+			}
+		})
+	}
+
+	function uploadQrcode() {
+		uni.chooseImage({
+			count: 1,
+			sizeType: ['compressed'],
+			success: (chooseRes) => {
+				const tempPath = chooseRes.tempFilePaths[0]
+				const token = uni.getStorageSync('token') as string
+				uni.uploadFile({
+					url: 'http://localhost:3000/api/mobile/fund/upload-qrcode',
+					filePath: tempPath,
+					name: 'file',
+					header: { 'Authorization': `Bearer ${token}` },
+					success: (uploadRes) => {
+						const data = JSON.parse<UTSJSONObject>(uploadRes.data as string)
+						if (data != null && (data!['code'] as number) == 200) {
+							const d = data!['data'] as UTSJSONObject
+							qrcodeImage.value = (d['url'] as string) ?? ''
+							uni.showToast({ title: '上传成功', icon: 'success' })
+						}
+					},
+					fail: (_e) => {
+						uni.showToast({ title: '上传失败', icon: 'none' })
+					}
+				})
+			}
+		})
+	}
+
+	function submitWithdraw() {
+		const amt = parseFloat(amount.value)
+		if (isNaN(amt) || amt <= 0) {
+			uni.showToast({ title: '请输入出金金额', icon: 'none' })
+			return
+		}
+		if (amt > availableBalance.value) {
+			uni.showToast({ title: '可用余额不足', icon: 'none' })
+			return
+		}
+
+		const card = bankCards.value.find((c : BankCard) : boolean => c.id == selectedCardId.value)
+
+		const submitData = {
+			amount: amt,
+			withdrawMethod: selectedMethod.value,
+			bankCardId: selectedCardId.value > 0 ? selectedCardId.value : null,
+			accountName: card != null ? card.account_name : '',
+			accountNo: card != null ? card.account_no : '',
+			remark: remark.value,
+		} as UTSJSONObject
+		if (qrcodeImage.value.length > 0) {
+			submitData['qrcodeImage'] = qrcodeImage.value
+		}
+		post('/api/mobile/fund/withdraw', submitData).then((res) => {
+			if (res.code == 201) {
+				uni.showToast({ title: '出金申请已提交', icon: 'success' })
+				setTimeout(() => { uni.navigateBack({}) }, 1500)
+			} else {
+				uni.showToast({ title: res.msg, icon: 'none' })
+			}
+		})
+	}
+
+	onLoad(() => { loadData() })
+</script>
+
+<style>
+	.withdraw-page {
+		flex: 1;
+		background-color: #f5f5f5;
+		padding: 16px;
+	}
+
+	.balance-card {
+		background: linear-gradient(135deg, #fa8c16, #d46b08);
+		border-radius: 12px;
+		padding: 20px;
+		margin-bottom: 16px;
+	}
+
+	.balance-label {
+		font-size: 13px;
+		color: rgba(255, 255, 255, 0.8);
+		margin-bottom: 8px;
+	}
+
+	.balance-value {
+		font-size: 28px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+
+	.section-title {
+		font-size: 15px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 12px;
+	}
+
+	.method-section {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 16px;
+	}
+
+	.method-list {
+		flex-direction: row;
+	}
+
+	.method-item {
+		flex: 1;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 12px 8px;
+		margin: 0 4px;
+		border-radius: 6px;
+		background-color: #f5f5f5;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #e8e8e8;
+	}
+
+	.method-active {
+		border-color: #1890FF;
+		background-color: #e6f7ff;
+	}
+
+	.method-name {
+		font-size: 14px;
+		color: #333333;
+	}
+
+	.method-check {
+		width: 18px;
+		height: 18px;
+		border-radius: 9px;
+		background-color: #1890FF;
+		align-items: center;
+		justify-content: center;
+		margin-left: 6px;
+	}
+
+	.check-icon {
+		font-size: 12px;
+		color: #ffffff;
+	}
+
+	.card-section {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 16px;
+	}
+
+	.card-item {
+		flex-direction: row;
+		align-items: center;
+		padding: 12px;
+		border-radius: 6px;
+		background-color: #f9f9f9;
+		margin-bottom: 8px;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #f0f0f0;
+	}
+
+	.card-active {
+		border-color: #1890FF;
+		background-color: #e6f7ff;
+	}
+
+	.card-name {
+		flex: 1;
+		font-size: 14px;
+		color: #333333;
+	}
+
+	.default-tag {
+		font-size: 11px;
+		color: #1890FF;
+		background-color: #e6f7ff;
+		padding: 2px 6px;
+		border-radius: 3px;
+	}
+
+	.amount-section {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 16px;
+	}
+
+	.amount-input-wrap {
+		flex-direction: row;
+		align-items: center;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #e8e8e8;
+		padding-bottom: 8px;
+	}
+
+	.currency-symbol {
+		font-size: 24px;
+		font-weight: bold;
+		color: #333333;
+		margin-right: 8px;
+	}
+
+	.amount-input {
+		flex: 1;
+		font-size: 24px;
+		color: #333333;
+	}
+
+	.fee-info {
+		flex-direction: row;
+		justify-content: space-between;
+		margin-top: 10px;
+	}
+
+	.fee-text {
+		font-size: 13px;
+		color: #999999;
+	}
+
+	.remark-section {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 24px;
+	}
+
+	.remark-input {
+		font-size: 15px;
+		color: #333333;
+		padding: 10px 0;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #e8e8e8;
+	}
+
+	.qrcode-section {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 16px;
+	}
+
+	.qrcode-upload {
+		width: 120px;
+		height: 120px;
+		border-radius: 8px;
+		border-width: 1px;
+		border-style: dashed;
+		border-color: #d9d9d9;
+		justify-content: center;
+		align-items: center;
+		overflow: hidden;
+	}
+
+	.qrcode-preview {
+		width: 120px;
+		height: 120px;
+	}
+
+	.qrcode-placeholder {
+		align-items: center;
+	}
+
+	.qrcode-plus {
+		font-size: 30px;
+		color: #cccccc;
+	}
+
+	.qrcode-hint {
+		font-size: 12px;
+		color: #999999;
+		margin-top: 4px;
+	}
+
+	.submit-btn {
+		background-color: #fa8c16;
+		border-radius: 8px;
+		padding: 16px;
+		align-items: center;
+	}
+
+	.submit-text {
+		font-size: 16px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+</style>

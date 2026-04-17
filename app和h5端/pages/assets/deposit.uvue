@@ -1,0 +1,273 @@
+<template>
+	<view class="deposit-page">
+		<view class="pay-methods">
+			<text class="section-title">选择支付方式</text>
+			<view class="method-list">
+				<view v-for="(m, idx) in methods" :key="idx" class="method-item"
+					:class="{'method-active': selectedMethod == m.value}" @click="selectedMethod = m.value">
+					<text class="method-name">{{m.label}}</text>
+					<view v-if="selectedMethod == m.value" class="method-check">
+						<text class="check-icon">✓</text>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<view class="amount-section">
+			<text class="section-title">入金金额</text>
+			<view class="amount-input-wrap">
+				<text class="currency-symbol">$</text>
+				<input class="amount-input" type="digit" v-model="amount" placeholder="请输入入金金额" />
+			</view>
+			<text class="min-hint">最低入金: ${{payConfig.minDepositAmount}}</text>
+		</view>
+
+		<view class="payment-info" v-if="selectedMethod == 'usdt'">
+			<text class="section-title">USDT-TRC20 收款地址</text>
+			<view class="address-wrap">
+				<text class="address-text" user-select="true">{{payConfig.usdtTrc20Address || '暂未配置'}}</text>
+			</view>
+		</view>
+
+		<view class="payment-info" v-if="selectedMethod == 'wechat' && payConfig.wechatPayQrcode.length > 0">
+			<text class="section-title">微信收款码</text>
+			<image class="qrcode-img" :src="payConfig.wechatPayQrcode" mode="aspectFit"></image>
+		</view>
+
+		<view class="payment-info" v-if="selectedMethod == 'alipay' && payConfig.alipayPayQrcode.length > 0">
+			<text class="section-title">支付宝收款码</text>
+			<image class="qrcode-img" :src="payConfig.alipayPayQrcode" mode="aspectFit"></image>
+		</view>
+
+		<view class="remark-section">
+			<text class="section-title">备注(选填)</text>
+			<input class="remark-input" v-model="remark" placeholder="转账备注/支付流水号" />
+		</view>
+
+		<view class="submit-btn" @click="submitDeposit">
+			<text class="submit-text">提交入金申请</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get, post } from '@/utils/request.uts'
+
+	type PayConfig = {
+		minDepositAmount : number
+		wechatPayQrcode : string
+		alipayPayQrcode : string
+		usdtTrc20Address : string
+	}
+
+	type MethodOption = {
+		label : string
+		value : string
+	}
+
+	const methods : MethodOption[] = [
+		{ label: '微信支付', value: 'wechat' } as MethodOption,
+		{ label: '支付宝', value: 'alipay' } as MethodOption,
+		{ label: 'USDT-TRC20', value: 'usdt' } as MethodOption,
+	]
+
+	const selectedMethod = ref('wechat')
+	const amount = ref('')
+	const remark = ref('')
+	const payConfig = reactive({
+		minDepositAmount: 100,
+		wechatPayQrcode: '',
+		alipayPayQrcode: '',
+		usdtTrc20Address: '',
+	} as PayConfig)
+
+	function loadConfig() {
+		get('/api/mobile/fund/payment-config').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				payConfig.minDepositAmount = (d['minDepositAmount'] as number) ?? 100
+				payConfig.wechatPayQrcode = (d['wechatPayQrcode'] as string) ?? ''
+				payConfig.alipayPayQrcode = (d['alipayPayQrcode'] as string) ?? ''
+				payConfig.usdtTrc20Address = (d['usdtTrc20Address'] as string) ?? ''
+			}
+		})
+	}
+
+	function submitDeposit() {
+		const amt = parseFloat(amount.value)
+		if (isNaN(amt) || amt < payConfig.minDepositAmount) {
+			uni.showToast({ title: `最低入金 $${payConfig.minDepositAmount}`, icon: 'none' })
+			return
+		}
+		post('/api/mobile/fund/deposit', {
+			amount: amt,
+			paymentMethod: selectedMethod.value,
+			remark: remark.value,
+		} as UTSJSONObject).then((res) => {
+			if (res.code == 201) {
+				uni.showToast({ title: '入金申请已提交', icon: 'success' })
+				setTimeout(() => {
+					uni.navigateBack({})
+				}, 1500)
+			} else {
+				uni.showToast({ title: res.msg, icon: 'none' })
+			}
+		})
+	}
+
+	onLoad(() => {
+		loadConfig()
+	})
+</script>
+
+<style>
+	.deposit-page {
+		flex: 1;
+		background-color: #f5f5f5;
+		padding: 16px;
+	}
+
+	.section-title {
+		font-size: 15px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 12px;
+	}
+
+	.pay-methods {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 16px;
+	}
+
+	.method-list {
+		/* container */
+	}
+
+	.method-item {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 14px 12px;
+		border-radius: 8px;
+		margin-bottom: 8px;
+		background-color: #f9f9f9;
+		border-width: 1px;
+		border-style: solid;
+		border-color: #f0f0f0;
+	}
+
+	.method-active {
+		border-color: #1890FF;
+		background-color: #e6f7ff;
+	}
+
+	.method-name {
+		font-size: 15px;
+		color: #333333;
+	}
+
+	.method-check {
+		width: 22px;
+		height: 22px;
+		border-radius: 11px;
+		background-color: #1890FF;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.check-icon {
+		font-size: 14px;
+		color: #ffffff;
+	}
+
+	.amount-section {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 16px;
+	}
+
+	.amount-input-wrap {
+		flex-direction: row;
+		align-items: center;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #e8e8e8;
+		padding-bottom: 8px;
+	}
+
+	.currency-symbol {
+		font-size: 24px;
+		font-weight: bold;
+		color: #333333;
+		margin-right: 8px;
+	}
+
+	.amount-input {
+		flex: 1;
+		font-size: 24px;
+		color: #333333;
+	}
+
+	.min-hint {
+		font-size: 12px;
+		color: #999999;
+		margin-top: 8px;
+	}
+
+	.payment-info {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 16px;
+	}
+
+	.address-wrap {
+		background-color: #f5f5f5;
+		padding: 12px;
+		border-radius: 6px;
+	}
+
+	.address-text {
+		font-size: 13px;
+		color: #666666;
+		word-break: break-all;
+	}
+
+	.qrcode-img {
+		width: 200px;
+		height: 200px;
+		align-self: center;
+	}
+
+	.remark-section {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 24px;
+	}
+
+	.remark-input {
+		font-size: 15px;
+		color: #333333;
+		padding: 10px 0;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #e8e8e8;
+	}
+
+	.submit-btn {
+		background-color: #1890FF;
+		border-radius: 8px;
+		padding: 16px;
+		align-items: center;
+	}
+
+	.submit-text {
+		font-size: 16px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+</style>

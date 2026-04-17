@@ -1,0 +1,384 @@
+<template>
+	<scroll-view class="home-page" direction="vertical" @scrolltolower="onScrollBottom">
+		<!-- 顶部 Banner 轮播 -->
+		<swiper class="banner-swiper" :autoplay="true" :interval="4000" :circular="true" indicator-dots
+			indicator-color="rgba(255,255,255,0.4)" indicator-active-color="#ffffff">
+			<swiper-item v-for="(banner, idx) in banners" :key="idx" @click="onBannerClick(banner)">
+				<image class="banner-image" :src="banner.image_url" mode="aspectFill"></image>
+			</swiper-item>
+			<swiper-item v-if="banners.length == 0">
+				<view class="banner-placeholder">
+					<text class="banner-placeholder-text">欢迎使用交易系统</text>
+				</view>
+			</swiper-item>
+		</swiper>
+
+		<!-- 8 宫格导航 -->
+		<view class="grid-nav">
+			<view class="grid-row">
+				<view class="grid-item" @click="goPage('/pages/trade/place-order?symbol=XAUUSD')">
+					<view class="grid-icon gi-demo"><text class="grid-icon-text">💎</text></view>
+					<text class="grid-label">领模拟金</text>
+				</view>
+				<view class="grid-item" @click="goPage('/pages/assets/deposit')">
+					<view class="grid-icon gi-deposit"><text class="grid-icon-text">💰</text></view>
+					<text class="grid-label">快速入金</text>
+				</view>
+				<view class="grid-item" @click="goPage('/pages/mine/help')">
+					<view class="grid-icon gi-help"><text class="grid-icon-text">❓</text></view>
+					<text class="grid-label">帮助中心</text>
+				</view>
+				<view class="grid-item" @click="goPage('/pages/mine/report')">
+					<view class="grid-icon gi-report"><text class="grid-icon-text">📊</text></view>
+					<text class="grid-label">交易报表</text>
+				</view>
+			</view>
+			<view class="grid-row">
+				<view class="grid-item" @click="goTab('/pages/trade/index')">
+					<view class="grid-icon gi-position"><text class="grid-icon-text">📋</text></view>
+					<text class="grid-label">我的持仓</text>
+				</view>
+				<view class="grid-item" @click="goPage('/pages/market/alerts')">
+					<view class="grid-icon gi-alert"><text class="grid-icon-text">🔔</text></view>
+					<text class="grid-label">价格预警</text>
+				</view>
+				<view class="grid-item" @click="goTab('/pages/market/index')">
+					<view class="grid-icon gi-market"><text class="grid-icon-text">📈</text></view>
+					<text class="grid-label">实时盯盘</text>
+				</view>
+				<view class="grid-item" @click="goPage('/pages/mine/settings')">
+					<view class="grid-icon gi-settings"><text class="grid-icon-text">⚙️</text></view>
+					<text class="grid-label">账户设置</text>
+				</view>
+			</view>
+		</view>
+
+		<!-- 公告栏 -->
+		<view class="notice-bar" v-if="latestAnnouncement.length > 0">
+			<text class="notice-icon">📢</text>
+			<text class="notice-text">{{latestAnnouncement}}</text>
+		</view>
+
+		<!-- 热门行情 -->
+		<view class="section">
+			<view class="section-header">
+				<text class="section-title">热门行情</text>
+				<text class="section-more" @click="goTab('/pages/market/index')">更多 ></text>
+			</view>
+			<scroll-view class="hot-scroll" direction="horizontal" :show-scrollbar="false">
+				<view class="hot-list">
+					<view v-for="(item, idx) in hotSymbols" :key="idx" class="hot-card" @click="goSymbolDetail(item)">
+						<text class="hot-symbol">{{item.symbol}}</text>
+						<text class="hot-price">{{formatPrice(item.bid, item.price_decimals)}}</text>
+						<view class="hot-change-row">
+							<text class="hot-change"
+								:class="item.change_percent >= 0 ? 'text-up' : 'text-down'">{{item.change_percent >= 0 ? '+' : ''}}{{item.change_percent.toFixed(2)}}%</text>
+						</view>
+					</view>
+				</view>
+			</scroll-view>
+		</view>
+
+		<!-- 中部 Banner -->
+		<view class="section" v-if="middleBanners.length > 0">
+			<swiper class="middle-banner-swiper" :autoplay="true" :interval="5000" :circular="true">
+				<swiper-item v-for="(banner, idx) in middleBanners" :key="idx" @click="onBannerClick(banner)">
+					<image class="middle-banner-image" :src="banner.image_url" mode="aspectFill"></image>
+				</swiper-item>
+			</swiper>
+		</view>
+
+		<!-- 奖励卡片 -->
+		<view class="section" v-if="rewardCards.length > 0">
+			<view class="section-header">
+				<text class="section-title">新手福利</text>
+			</view>
+			<scroll-view class="reward-scroll" direction="horizontal" :show-scrollbar="false">
+				<view class="reward-list">
+					<view v-for="(card, idx) in rewardCards" :key="idx" class="reward-card"
+						:style="{backgroundColor: card.bg_color}">
+						<text class="reward-title">{{card.title}}</text>
+						<text class="reward-amount">${{card.reward_amount}}</text>
+						<text class="reward-desc">{{card.description}}</text>
+						<text class="reward-trigger">{{getTriggerLabel(card.trigger_type)}}</text>
+					</view>
+				</view>
+			</scroll-view>
+		</view>
+
+		<!-- 活动推荐 -->
+		<view class="section" v-if="activities.length > 0">
+			<view class="section-header">
+				<text class="section-title">热门活动</text>
+				<text class="section-more" @click="goPage('/pages/index/activities')">更多 ></text>
+			</view>
+			<view v-for="(act, idx) in activities" :key="idx" class="activity-card"
+				@click="goPage('/pages/index/activity-detail?id=' + act.id)">
+				<image v-if="act.cover_image.length > 0" class="activity-cover" :src="act.cover_image"
+					mode="aspectFill"></image>
+				<view class="activity-info">
+					<text class="activity-title">{{act.title}}</text>
+					<text class="activity-summary">{{act.summary}}</text>
+					<view class="activity-meta">
+						<text class="activity-time">{{act.start_time ?? '待定'}}</text>
+						<text class="activity-views">{{act.view_count}}次浏览</text>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<view class="bottom-space"></view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { get, post } from '@/utils/request.uts'
+	import { connectWebSocket, subscribeSymbols, disconnectWebSocket } from '@/utils/websocket.uts'
+
+	type BannerItem = {
+		id : number
+		title : string
+		image_url : string
+		link_type : string
+		link_value : string
+	}
+
+	type RewardCardItem = {
+		id : number
+		title : string
+		description : string
+		reward_type : string
+		reward_amount : number
+		trigger_type : string
+		bg_color : string
+	}
+
+	type HotSymbol = {
+		id : number
+		symbol : string
+		name : string
+		bid : number
+		ask : number
+		price_decimals : number
+		change_percent : number
+	}
+
+	type ActivityItem = {
+		id : number
+		title : string
+		summary : string
+		cover_image : string
+		start_time : string | null
+		view_count : number
+	}
+
+	const banners = ref<BannerItem[]>([])
+	const middleBanners = ref<BannerItem[]>([])
+	const rewardCards = ref<RewardCardItem[]>([])
+	const hotSymbols = ref<HotSymbol[]>([])
+	const activities = ref<ActivityItem[]>([])
+	const latestAnnouncement = ref('')
+
+	onLoad(() => {
+		loadHomepageData()
+		loadHotSymbols()
+		loadActivities()
+		loadAnnouncement()
+	})
+
+	onShow(() => {
+		connectWebSocket((tickData : any) => {
+			if (tickData == null) return
+			const obj = tickData as UTSJSONObject
+			const sym = obj['symbol'] as string
+			for (let i = 0; i < hotSymbols.value.length; i++) {
+				if (hotSymbols.value[i].symbol == sym) {
+					hotSymbols.value[i].bid = obj['bid'] as number
+					hotSymbols.value[i].ask = obj['ask'] as number
+					hotSymbols.value[i].change_percent = obj['change_percent'] as number
+					break
+				}
+			}
+		})
+	})
+
+	onHide(() => {
+		disconnectWebSocket()
+	})
+
+	/** 加载首页聚合数据（Banner + 中部Banner + 奖励卡片） */
+	function loadHomepageData() {
+		get('/api/mobile/operation/homepage').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const data = res.data as UTSJSONObject
+				const bList = JSON.parse<BannerItem[]>(JSON.stringify(data['banners']))
+				if (bList != null) banners.value = bList!
+				const mbList = JSON.parse<BannerItem[]>(JSON.stringify(data['middleBanners']))
+				if (mbList != null) middleBanners.value = mbList!
+				const rList = JSON.parse<RewardCardItem[]>(JSON.stringify(data['rewardCards']))
+				if (rList != null) rewardCards.value = rList!
+			}
+		}).catch((_e : any) => { })
+	}
+
+	/** 加载热门品种 */
+	function loadHotSymbols() {
+		get('/api/mobile/market/symbols').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const arr = JSON.parse<HotSymbol[]>(JSON.stringify(res.data))
+				if (arr != null) {
+					const hotList : HotSymbol[] = []
+					const symCodes : string[] = []
+					for (let i = 0; i < arr!.length; i++) {
+						symCodes.push(arr![i].symbol)
+						if (hotList.length < 6) {
+							hotList.push(arr![i])
+						}
+					}
+					hotSymbols.value = hotList
+					subscribeSymbols(symCodes)
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	/** 加载活动 */
+	function loadActivities() {
+		get('/api/mobile/operation/activities?page=1&pageSize=3').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const data = res.data as UTSJSONObject
+				const list = JSON.parse<ActivityItem[]>(JSON.stringify(data['list']))
+				if (list != null) activities.value = list!
+			}
+		}).catch((_e : any) => { })
+	}
+
+	/** 加载最新公告 */
+	function loadAnnouncement() {
+		get('/api/mobile/announcement/list?page=1&pageSize=1').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const data = res.data as UTSJSONObject
+				const list = data['list'] as any[] | null
+				if (list != null && list!.length > 0) {
+					const first = list![0] as UTSJSONObject
+					latestAnnouncement.value = first['title'] as string
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function onBannerClick(banner : BannerItem) {
+		post(`/api/mobile/operation/banners/${banner.id}/click`).catch((_e : any) => { })
+		if (banner.link_type == 'url' && banner.link_value.length > 0) {
+			// #ifdef H5
+			window.open(banner.link_value)
+			// #endif
+			// #ifdef APP-PLUS
+			plus.runtime.openURL(banner.link_value)
+			// #endif
+		} else if (banner.link_type == 'page' && banner.link_value.length > 0) {
+			uni.navigateTo({ url: banner.link_value })
+		} else if (banner.link_type == 'activity' && banner.link_value.length > 0) {
+			uni.navigateTo({ url: `/pages/index/activity-detail?id=${banner.link_value}` })
+		}
+	}
+
+	function goPage(url : string) {
+		uni.navigateTo({ url: url })
+	}
+
+	function goTab(url : string) {
+		uni.switchTab({ url: url })
+	}
+
+	function goSymbolDetail(item : HotSymbol) {
+		uni.navigateTo({ url: `/pages/market/detail?id=${item.id}&symbol=${item.symbol}` })
+	}
+
+	function formatPrice(price : number, decimals : number) : string {
+		return price.toFixed(decimals)
+	}
+
+	function getTriggerLabel(triggerType : string) : string {
+		if (triggerType == 'register') return '注册即领'
+		if (triggerType == 'first_deposit') return '首次入金'
+		if (triggerType == 'deposit_amount') return '入金达标'
+		if (triggerType == 'trade_count') return '交易达标'
+		if (triggerType == 'invite') return '邀请好友'
+		return '领取'
+	}
+
+	function onScrollBottom() { }
+</script>
+
+<style>
+	.home-page { flex: 1; background-color: #f5f5f5; }
+
+	/* Banner */
+	.banner-swiper { width: 100%; height: 180px; }
+	.banner-image { width: 100%; height: 180px; }
+	.banner-placeholder { width: 100%; height: 180px; background-color: #1890ff; justify-content: center; align-items: center; }
+	.banner-placeholder-text { color: #ffffff; font-size: 20px; font-weight: bold; }
+
+	/* 8 宫格 */
+	.grid-nav { background-color: #ffffff; padding: 12px 0; margin-bottom: 8px; }
+	.grid-row { flex-direction: row; }
+	.grid-item { flex: 1; align-items: center; justify-content: center; padding: 8px 0; }
+	.grid-icon { width: 40px; height: 40px; border-radius: 10px; justify-content: center; align-items: center; margin-bottom: 4px; }
+	.gi-demo { background-color: #fff0f6; }
+	.gi-deposit { background-color: #e6f7ff; }
+	.gi-help { background-color: #f9f0ff; }
+	.gi-report { background-color: #f6ffed; }
+	.gi-position { background-color: #fff7e6; }
+	.gi-alert { background-color: #fff1f0; }
+	.gi-market { background-color: #e6fffb; }
+	.gi-settings { background-color: #f0f5ff; }
+	.grid-icon-text { font-size: 20px; }
+	.grid-label { font-size: 11px; color: #666666; }
+
+	/* 公告栏 */
+	.notice-bar { flex-direction: row; align-items: center; background-color: #fffbe6; padding: 8px 15px; margin-bottom: 8px; }
+	.notice-icon { font-size: 14px; margin-right: 8px; }
+	.notice-text { font-size: 13px; color: #d48806; flex: 1; lines: 1; text-overflow: ellipsis; }
+
+	/* 通用板块 */
+	.section { background-color: #ffffff; margin-bottom: 8px; padding: 12px 0; }
+	.section-header { flex-direction: row; justify-content: space-between; align-items: center; padding: 0 15px; margin-bottom: 10px; }
+	.section-title { font-size: 16px; font-weight: bold; color: #333333; }
+	.section-more { font-size: 13px; color: #1890FF; }
+
+	/* 热门行情 */
+	.hot-scroll { height: 100px; }
+	.hot-list { flex-direction: row; padding: 0 10px; }
+	.hot-card { width: 120px; padding: 10px; margin: 0 5px; background-color: #fafafa; border-radius: 8px; align-items: center; }
+	.hot-symbol { font-size: 13px; font-weight: bold; color: #333333; margin-bottom: 4px; }
+	.hot-price { font-size: 16px; font-weight: bold; color: #333333; margin-bottom: 4px; }
+	.hot-change-row { flex-direction: row; }
+	.hot-change { font-size: 12px; font-weight: bold; }
+	.text-up { color: #52c41a; }
+	.text-down { color: #f5222d; }
+
+	/* 中部 Banner */
+	.middle-banner-swiper { width: 100%; height: 100px; padding: 0 15px; }
+	.middle-banner-image { width: 100%; height: 100px; border-radius: 8px; }
+
+	/* 奖励卡片 */
+	.reward-scroll { height: 120px; }
+	.reward-list { flex-direction: row; padding: 0 10px; }
+	.reward-card { width: 150px; padding: 12px; margin: 0 5px; border-radius: 10px; }
+	.reward-title { font-size: 14px; font-weight: bold; color: #ffffff; margin-bottom: 4px; }
+	.reward-amount { font-size: 24px; font-weight: bold; color: #ffffff; margin-bottom: 4px; }
+	.reward-desc { font-size: 11px; color: rgba(255, 255, 255, 0.8); margin-bottom: 4px; }
+	.reward-trigger { font-size: 11px; color: rgba(255, 255, 255, 0.6); background-color: rgba(255, 255, 255, 0.2); padding: 2px 8px; border-radius: 10px; align-self: flex-start; }
+
+	/* 活动 */
+	.activity-card { margin: 0 15px 10px; background-color: #fafafa; border-radius: 8px; overflow: hidden; }
+	.activity-cover { width: 100%; height: 120px; }
+	.activity-info { padding: 10px; }
+	.activity-title { font-size: 15px; font-weight: bold; color: #333333; margin-bottom: 4px; }
+	.activity-summary { font-size: 13px; color: #666666; margin-bottom: 6px; lines: 2; text-overflow: ellipsis; }
+	.activity-meta { flex-direction: row; justify-content: space-between; }
+	.activity-time { font-size: 12px; color: #999999; }
+	.activity-views { font-size: 12px; color: #999999; }
+	.bottom-space { height: 20px; }
+</style>

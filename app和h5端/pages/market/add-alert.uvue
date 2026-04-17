@@ -1,0 +1,331 @@
+<template>
+	<scroll-view class="add-alert-page" direction="vertical">
+		<view class="form-section">
+			<text class="form-label">选择品种</text>
+			<view class="symbol-picker" @click="showSymbolPicker = true">
+				<text class="picker-value" v-if="selectedSymbol.length > 0">{{selectedSymbol}}</text>
+				<text class="picker-placeholder" v-else>请选择交易品种</text>
+			</view>
+		</view>
+
+		<view class="form-section">
+			<text class="form-label">预警类型</text>
+			<view class="type-group">
+				<view v-for="(t, idx) in alertTypes" :key="idx" class="type-item"
+					:class="{'type-active': selectedType == idx}" @click="selectedType = idx">
+					<text class="type-text" :class="{'type-text-active': selectedType == idx}">{{t.label}}</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="form-section">
+			<text class="form-label">目标值</text>
+			<input class="form-input" type="digit" :placeholder="getTargetPlaceholder()" :value="targetValue"
+				@input="onTargetInput" />
+			<text class="form-hint">{{getTargetHint()}}</text>
+		</view>
+
+		<view class="form-section">
+			<text class="form-label">通知方式</text>
+			<view class="type-group">
+				<view v-for="(n, idx) in notifyMethods" :key="idx" class="type-item"
+					:class="{'type-active': selectedNotify == idx}" @click="selectedNotify = idx">
+					<text class="type-text" :class="{'type-text-active': selectedNotify == idx}">{{n.label}}</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="form-section">
+			<text class="form-label">备注（可选）</text>
+			<input class="form-input" type="text" placeholder="添加备注说明" :value="note" @input="onNoteInput" />
+		</view>
+
+		<view class="submit-btn" @click="submitAlert">
+			<text class="submit-text">创建预警</text>
+		</view>
+
+		<view v-if="showSymbolPicker" class="picker-overlay" @click="showSymbolPicker = false">
+			<view class="picker-panel" @click.stop="">
+				<view class="picker-header">
+					<text class="picker-title">选择品种</text>
+					<text class="picker-close" @click="showSymbolPicker = false">关闭</text>
+				</view>
+				<scroll-view class="picker-list" direction="vertical">
+					<view v-for="(s, idx) in symbolList" :key="idx" class="picker-item"
+						@click="selectSymbol(s)">
+						<text class="picker-item-code">{{s.symbol}}</text>
+						<text class="picker-item-name">{{s.name}}</text>
+					</view>
+				</scroll-view>
+			</view>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { get, post } from '@/utils/request.uts'
+
+	type SimpleSymbol = {
+		symbol : string
+		name : string
+	}
+
+	const alertTypes = [
+		{ key: 'price_above', label: '价格高于' },
+		{ key: 'price_below', label: '价格低于' },
+		{ key: 'change_percent', label: '涨跌幅达' },
+	]
+
+	const notifyMethods = [
+		{ key: 'push', label: '推送通知' },
+		{ key: 'email', label: '邮件通知' },
+	]
+
+	const selectedSymbol = ref('')
+	const selectedType = ref(0)
+	const targetValue = ref('')
+	const selectedNotify = ref(0)
+	const note = ref('')
+	const showSymbolPicker = ref(false)
+	const symbolList = ref<SimpleSymbol[]>([])
+
+	onLoad((options : OnLoadOptions) => {
+		const sym = options['symbol'] ?? ''
+		if (sym.length > 0) {
+			selectedSymbol.value = sym
+		}
+		loadSymbols()
+	})
+
+	function loadSymbols() {
+		get('/api/mobile/market/symbols').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const raw = JSON.stringify(res.data)
+				const arr = JSON.parse<UTSJSONObject[]>(raw)
+				if (arr != null) {
+					const list : SimpleSymbol[] = []
+					for (let i = 0; i < arr!.length; i++) {
+						const item = arr![i]
+						list.push({
+							symbol: item['symbol'] as string,
+							name: item['name'] as string,
+						} as SimpleSymbol)
+					}
+					symbolList.value = list
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function selectSymbol(s : SimpleSymbol) {
+		selectedSymbol.value = s.symbol
+		showSymbolPicker.value = false
+	}
+
+	function onTargetInput(e : InputEvent) {
+		targetValue.value = e.detail.value
+	}
+
+	function onNoteInput(e : InputEvent) {
+		note.value = e.detail.value
+	}
+
+	function getTargetPlaceholder() : string {
+		if (selectedType.value == 2) return '请输入百分比，如 5'
+		return '请输入目标价格'
+	}
+
+	function getTargetHint() : string {
+		if (selectedType.value == 0) return '当价格高于此值时触发预警'
+		if (selectedType.value == 1) return '当价格低于此值时触发预警'
+		return '当涨跌幅达到此百分比时触发预警'
+	}
+
+	function submitAlert() {
+		if (selectedSymbol.value.length == 0) {
+			uni.showToast({ title: '请选择品种', icon: 'none' })
+			return
+		}
+		if (targetValue.value.length == 0) {
+			uni.showToast({ title: '请输入目标值', icon: 'none' })
+			return
+		}
+
+		const data = {
+			symbol: selectedSymbol.value,
+			alert_type: alertTypes[selectedType.value].key,
+			target_value: parseFloat(targetValue.value),
+			notify_method: notifyMethods[selectedNotify.value].key,
+			note: note.value.length > 0 ? note.value : null,
+		}
+
+		post('/api/mobile/market/alerts', data).then((res) => {
+			if (res.code == 201 || res.code == 200) {
+				uni.showToast({ title: '预警创建成功', icon: 'success' })
+				setTimeout(() => {
+					uni.navigateBack({})
+				}, 1500)
+			} else {
+				const msg = res.msg ?? '创建失败'
+				uni.showToast({ title: msg, icon: 'none' })
+			}
+		}).catch((_e : any) => {
+			uni.showToast({ title: '网络错误', icon: 'none' })
+		})
+	}
+</script>
+
+<style>
+	.add-alert-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.form-section {
+		background-color: #ffffff;
+		padding: 15px;
+		margin-bottom: 8px;
+	}
+
+	.form-label {
+		font-size: 15px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 10px;
+	}
+
+	.symbol-picker {
+		height: 44px;
+		background-color: #f5f5f5;
+		border-radius: 8px;
+		padding: 0 15px;
+		justify-content: center;
+	}
+
+	.picker-value {
+		font-size: 15px;
+		color: #333333;
+	}
+
+	.picker-placeholder {
+		font-size: 15px;
+		color: #cccccc;
+	}
+
+	.type-group {
+		flex-direction: row;
+	}
+
+	.type-item {
+		padding: 8px 16px;
+		margin-right: 10px;
+		border-radius: 6px;
+		background-color: #f5f5f5;
+	}
+
+	.type-active {
+		background-color: #e6f7ff;
+	}
+
+	.type-text {
+		font-size: 14px;
+		color: #666666;
+	}
+
+	.type-text-active {
+		color: #1890FF;
+		font-weight: bold;
+	}
+
+	.form-input {
+		height: 44px;
+		background-color: #f5f5f5;
+		border-radius: 8px;
+		padding: 0 15px;
+		font-size: 15px;
+	}
+
+	.form-hint {
+		font-size: 12px;
+		color: #999999;
+		margin-top: 6px;
+	}
+
+	.submit-btn {
+		margin: 20px 15px;
+		height: 48px;
+		background-color: #1890FF;
+		border-radius: 8px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.submit-text {
+		font-size: 16px;
+		color: #ffffff;
+		font-weight: bold;
+	}
+
+	.picker-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		justify-content: flex-end;
+	}
+
+	.picker-panel {
+		background-color: #ffffff;
+		border-top-left-radius: 16px;
+		border-top-right-radius: 16px;
+		max-height: 500px;
+	}
+
+	.picker-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 15px;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #eeeeee;
+		border-bottom-style: solid;
+	}
+
+	.picker-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+	}
+
+	.picker-close {
+		font-size: 14px;
+		color: #999999;
+	}
+
+	.picker-list {
+		max-height: 400px;
+	}
+
+	.picker-item {
+		flex-direction: row;
+		align-items: center;
+		padding: 12px 15px;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #f0f0f0;
+		border-bottom-style: solid;
+	}
+
+	.picker-item-code {
+		font-size: 15px;
+		font-weight: bold;
+		color: #333333;
+		margin-right: 10px;
+	}
+
+	.picker-item-name {
+		font-size: 13px;
+		color: #999999;
+	}
+</style>

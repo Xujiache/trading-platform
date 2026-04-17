@@ -1,0 +1,709 @@
+<template>
+	<view class="place-order-page">
+		<scroll-view class="form-scroll" direction="vertical">
+			<view class="section">
+				<text class="section-title">选择品种</text>
+				<view class="symbol-selector" @click="showSymbolPicker = true">
+					<text class="symbol-selected" v-if="selectedSymbol != null">
+						{{(selectedSymbol!['symbol'] as string)}} - {{(selectedSymbol!['name'] as string)}}
+					</text>
+					<text class="symbol-placeholder" v-else>请选择交易品种</text>
+					<text class="arrow-right">›</text>
+				</view>
+				<view v-if="selectedSymbol != null" class="price-display">
+					<view class="price-col">
+						<text class="price-label">买入价(Ask)</text>
+						<text class="price-val text-green">{{currentAsk}}</text>
+					</view>
+					<view class="price-col">
+						<text class="price-label">卖出价(Bid)</text>
+						<text class="price-val text-red">{{currentBid}}</text>
+					</view>
+				</view>
+			</view>
+
+			<view class="section">
+				<text class="section-title">订单类型</text>
+				<view class="order-type-row">
+					<view class="type-btn" :class="{'type-btn-active': orderType == 'market'}"
+						@click="orderType = 'market'">
+						<text class="type-btn-text" :class="{'type-btn-text-active': orderType == 'market'}">市价单</text>
+					</view>
+					<view class="type-btn" :class="{'type-btn-active': orderType == 'pending'}"
+						@click="orderType = 'pending'">
+						<text class="type-btn-text" :class="{'type-btn-text-active': orderType == 'pending'}">挂单</text>
+					</view>
+				</view>
+			</view>
+
+			<view class="section" v-if="orderType == 'pending'">
+				<text class="section-title">挂单类型</text>
+				<view class="pending-types">
+					<view v-for="(pt, idx) in pendingTypes" :key="idx" class="pending-type-item"
+						:class="{'pending-type-active': pendingType == pt.key}" @click="pendingType = pt.key">
+						<text class="pending-type-text"
+							:class="{'pending-type-text-active': pendingType == pt.key}">{{pt.label}}</text>
+					</view>
+				</view>
+				<view class="form-row">
+					<text class="form-label">目标价格</text>
+					<input class="form-input" type="digit" placeholder="输入目标价" :value="targetPrice"
+						@input="(e : InputEvent) => { targetPrice = e.detail.value }" />
+				</view>
+			</view>
+
+			<view class="section">
+				<text class="section-title">交易方向</text>
+				<view class="direction-row">
+					<view class="dir-btn dir-btn-buy" :class="{'dir-btn-buy-active': direction == 'buy'}"
+						@click="setDirection('buy')">
+						<text class="dir-btn-text" :class="{'dir-btn-text-active': direction == 'buy'}">买入(做多)</text>
+					</view>
+					<view class="dir-btn dir-btn-sell" :class="{'dir-btn-sell-active': direction == 'sell'}"
+						@click="setDirection('sell')">
+						<text class="dir-btn-text" :class="{'dir-btn-text-active': direction == 'sell'}">卖出(做空)</text>
+					</view>
+				</view>
+			</view>
+
+			<view class="section">
+				<text class="section-title">手数</text>
+				<view class="lots-quick">
+					<view v-for="(l, idx) in lotsOptions" :key="idx" class="lots-item"
+						:class="{'lots-item-active': lots == l}" @click="setLots(l)">
+						<text class="lots-text" :class="{'lots-text-active': lots == l}">{{l}}</text>
+					</view>
+				</view>
+				<view class="form-row">
+					<text class="form-label">自定义手数</text>
+					<input class="form-input" type="digit" :placeholder="`${minLot} ~ ${maxLot}`" :value="lots + ''"
+						@input="(e : InputEvent) => { lots = parseFloat(e.detail.value); estimateFees() }" />
+				</view>
+			</view>
+
+			<view class="section">
+				<text class="section-title">杠杆</text>
+				<view class="lots-quick">
+					<view v-for="(lv, idx) in leverageOptions" :key="idx" class="lots-item"
+						:class="{'lots-item-active': leverage == lv}" @click="setLeverage(lv)">
+						<text class="lots-text" :class="{'lots-text-active': leverage == lv}">{{lv}}x</text>
+					</view>
+				</view>
+			</view>
+
+			<view class="section">
+				<text class="section-title">止损止盈（选填）</text>
+				<view class="form-row">
+					<text class="form-label">止损价</text>
+					<input class="form-input" type="digit" placeholder="选填" :value="stopLoss"
+						@input="(e : InputEvent) => { stopLoss = e.detail.value }" />
+				</view>
+				<view class="form-row">
+					<text class="form-label">止盈价</text>
+					<input class="form-input" type="digit" placeholder="选填" :value="takeProfit"
+						@input="(e : InputEvent) => { takeProfit = e.detail.value }" />
+				</view>
+				<view class="form-row">
+					<text class="form-label">移动止损(点)</text>
+					<input class="form-input" type="digit" placeholder="选填，设置后止损跟随价格移动" :value="trailingStop"
+						@input="(e : InputEvent) => { trailingStop = e.detail.value }" />
+				</view>
+			</view>
+
+			<view class="section" v-if="feeEstimate != null">
+				<text class="section-title">费用预估</text>
+				<view class="fee-row">
+					<text class="fee-label">保证金</text>
+					<text class="fee-value">${{(feeEstimate!['margin'] as number).toFixed(2)}}</text>
+				</view>
+				<view class="fee-row">
+					<text class="fee-label">手续费</text>
+					<text class="fee-value">${{(feeEstimate!['commission'] as number).toFixed(2)}}</text>
+				</view>
+				<view class="fee-row">
+					<text class="fee-label">点差成本</text>
+					<text class="fee-value">${{(feeEstimate!['spreadCost'] as number).toFixed(2)}}</text>
+				</view>
+				<view class="fee-row">
+					<text class="fee-label">每日隔夜费</text>
+					<text class="fee-value">${{(feeEstimate!['swapPerDay'] as number).toFixed(2)}}</text>
+				</view>
+				<view class="fee-row fee-row-total">
+					<text class="fee-label-bold">开仓总成本</text>
+					<text class="fee-value-bold">${{(feeEstimate!['totalOpenCost'] as number).toFixed(2)}}</text>
+				</view>
+			</view>
+
+			<view class="submit-area">
+				<view class="submit-btn" :class="direction == 'buy' ? 'submit-btn-buy' : 'submit-btn-sell'"
+					@click="submitOrder">
+					<text class="submit-btn-text">
+						{{orderType == 'market' ? (direction == 'buy' ? '买入下单' : '卖出下单') : '创建挂单'}}
+					</text>
+				</view>
+			</view>
+		</scroll-view>
+
+		<view class="symbol-picker-mask" v-if="showSymbolPicker" @click="showSymbolPicker = false">
+			<view class="symbol-picker" @click.stop="">
+				<view class="picker-header">
+					<text class="picker-title">选择交易品种</text>
+					<text class="picker-close" @click="showSymbolPicker = false">✕</text>
+				</view>
+				<scroll-view class="picker-list" direction="vertical">
+					<view v-for="(s, idx) in symbolList" :key="idx" class="picker-item" @click="selectSymbol(s)">
+						<text class="picker-symbol">{{s['symbol'] as string}}</text>
+						<text class="picker-name">{{s['name'] as string}}</text>
+					</view>
+				</scroll-view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get, post } from '@/utils/request.uts'
+
+	const accountType = ref('demo')
+	const orderType = ref('market')
+	const direction = ref('buy')
+	const lots = ref(0.01)
+	const leverage = ref(100)
+	const stopLoss = ref('')
+	const takeProfit = ref('')
+	const trailingStop = ref('')
+	const targetPrice = ref('')
+	const pendingType = ref('buy_limit')
+	const showSymbolPicker = ref(false)
+	const selectedSymbol = ref<UTSJSONObject | null>(null)
+	const symbolList = ref<UTSJSONObject[]>([])
+	const feeEstimate = ref<UTSJSONObject | null>(null)
+	const currentBid = ref('0')
+	const currentAsk = ref('0')
+	const minLot = ref(0.01)
+	const maxLot = ref(100)
+
+	const lotsOptions = [0.01, 0.05, 0.1, 0.5, 1.0]
+	const leverageOptions = [10, 20, 50, 100, 200]
+	const pendingTypes = [
+		{ key: 'buy_limit', label: '买入限价' },
+		{ key: 'buy_stop', label: '买入止损' },
+		{ key: 'sell_limit', label: '卖出限价' },
+		{ key: 'sell_stop', label: '卖出止损' },
+	]
+
+	let priceTimer = 0
+
+	onLoad((options : OnLoadOptions) => {
+		if (options['accountType'] != null) {
+			accountType.value = options['accountType']!
+		}
+		if (options['symbolId'] != null) {
+			loadSymbolById(options['symbolId']!)
+		}
+		loadSymbols()
+	})
+
+	onUnload(() => {
+		if (priceTimer > 0) clearInterval(priceTimer)
+	})
+
+	function loadSymbols() {
+		get('/api/mobile/trade/symbols').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const arr = JSON.parse<UTSJSONObject[]>(JSON.stringify(res.data))
+				if (arr != null) symbolList.value = arr!
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function loadSymbolById(idStr : string) {
+		get(`/api/mobile/market/symbols/${idStr}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				selectedSymbol.value = d
+				onSymbolSelected()
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function setDirection(dir : string) {
+		direction.value = dir
+		estimateFees()
+	}
+
+	function setLots(l : number) {
+		lots.value = l
+		estimateFees()
+	}
+
+	function setLeverage(lv : number) {
+		leverage.value = lv
+		estimateFees()
+	}
+
+	function selectSymbol(sym : UTSJSONObject) {
+		selectedSymbol.value = sym
+		showSymbolPicker.value = false
+		onSymbolSelected()
+	}
+
+	function onSymbolSelected() {
+		if (selectedSymbol.value == null) return
+		const s = selectedSymbol.value!
+		minLot.value = (s['min_lot'] as number) ?? 0.01
+		maxLot.value = (s['max_lot'] as number) ?? 100
+		currentBid.value = ((s['bid'] as number) ?? 0).toString()
+		currentAsk.value = ((s['ask'] as number) ?? 0).toString()
+
+		if (priceTimer > 0) clearInterval(priceTimer)
+		priceTimer = setInterval(() => { refreshPrice() }, 2000) as number
+		estimateFees()
+	}
+
+	function refreshPrice() {
+		if (selectedSymbol.value == null) return
+		const symId = selectedSymbol.value!['id'] as number
+		get(`/api/mobile/market/symbols/${symId}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				currentBid.value = ((d['bid'] as number) ?? 0).toString()
+				currentAsk.value = ((d['ask'] as number) ?? 0).toString()
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function estimateFees() {
+		if (selectedSymbol.value == null) return
+		const symId = selectedSymbol.value!['id'] as number
+		post('/api/mobile/trade/estimate', {
+			symbolId: symId,
+			direction: direction.value,
+			lots: lots.value,
+			leverage: leverage.value,
+		}).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				feeEstimate.value = res.data as UTSJSONObject
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function submitOrder() {
+		if (selectedSymbol.value == null) {
+			uni.showToast({ title: '请选择交易品种', icon: 'none' })
+			return
+		}
+
+		const symId = selectedSymbol.value!['id'] as number
+
+		if (orderType.value == 'market') {
+			const data = {
+				symbolId: symId,
+				direction: direction.value,
+				lots: lots.value,
+				leverage: leverage.value,
+				accountType: accountType.value,
+			} as UTSJSONObject
+			if (stopLoss.value.length > 0) data['stopLoss'] = parseFloat(stopLoss.value)
+			if (takeProfit.value.length > 0) data['takeProfit'] = parseFloat(takeProfit.value)
+			if (trailingStop.value.length > 0) data['trailingStop'] = parseFloat(trailingStop.value)
+
+			post('/api/mobile/trade/order', data).then((res) => {
+				if (res.code == 201 || res.code == 200) {
+					uni.showToast({ title: '下单成功', icon: 'success' })
+					setTimeout(() => { uni.navigateBack({}) }, 1500)
+				} else {
+					uni.showToast({ title: res.msg, icon: 'none' })
+				}
+			}).catch((_e : any) => {
+				uni.showToast({ title: '下单失败', icon: 'none' })
+			})
+		} else {
+			if (targetPrice.value.length == 0) {
+				uni.showToast({ title: '请输入目标价格', icon: 'none' })
+				return
+			}
+			const pDir = pendingType.value.indexOf('buy') >= 0 ? 'buy' : 'sell'
+			const data = {
+				symbolId: symId,
+				direction: pDir,
+				pendingType: pendingType.value,
+				lots: lots.value,
+				leverage: leverage.value,
+				targetPrice: parseFloat(targetPrice.value),
+				accountType: accountType.value,
+			} as UTSJSONObject
+			if (stopLoss.value.length > 0) data['stopLoss'] = parseFloat(stopLoss.value)
+			if (takeProfit.value.length > 0) data['takeProfit'] = parseFloat(takeProfit.value)
+			if (trailingStop.value.length > 0) data['trailingStop'] = parseFloat(trailingStop.value)
+
+			post('/api/mobile/trade/pending', data).then((res) => {
+				if (res.code == 201 || res.code == 200) {
+					uni.showToast({ title: '挂单创建成功', icon: 'success' })
+					setTimeout(() => { uni.navigateBack({}) }, 1500)
+				} else {
+					uni.showToast({ title: res.msg, icon: 'none' })
+				}
+			}).catch((_e : any) => {
+				uni.showToast({ title: '创建失败', icon: 'none' })
+			})
+		}
+	}
+</script>
+
+<style>
+	.place-order-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.form-scroll {
+		flex: 1;
+	}
+
+	.section {
+		margin: 8px 10px;
+		padding: 12px;
+		background-color: #ffffff;
+		border-radius: 8px;
+	}
+
+	.section-title {
+		font-size: 14px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 10px;
+	}
+
+	.symbol-selector {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10px 12px;
+		background-color: #f5f5f5;
+		border-radius: 8px;
+	}
+
+	.symbol-selected {
+		font-size: 15px;
+		color: #333333;
+	}
+
+	.symbol-placeholder {
+		font-size: 15px;
+		color: #999999;
+	}
+
+	.arrow-right {
+		font-size: 20px;
+		color: #cccccc;
+	}
+
+	.price-display {
+		flex-direction: row;
+		margin-top: 10px;
+	}
+
+	.price-col {
+		flex: 1;
+		align-items: center;
+	}
+
+	.price-label {
+		font-size: 12px;
+		color: #999999;
+	}
+
+	.price-val {
+		font-size: 18px;
+		font-weight: bold;
+		margin-top: 4px;
+	}
+
+	.order-type-row {
+		flex-direction: row;
+	}
+
+	.type-btn {
+		flex: 1;
+		height: 38px;
+		justify-content: center;
+		align-items: center;
+		border-radius: 8px;
+		background-color: #f5f5f5;
+		margin: 0 4px;
+	}
+
+	.type-btn-active {
+		background-color: #e6f7ff;
+		border-width: 1px;
+		border-color: #1890ff;
+		border-style: solid;
+	}
+
+	.type-btn-text {
+		font-size: 14px;
+		color: #666666;
+	}
+
+	.type-btn-text-active {
+		color: #1890ff;
+		font-weight: bold;
+	}
+
+	.pending-types {
+		flex-direction: row;
+		flex-wrap: wrap;
+		margin-bottom: 10px;
+	}
+
+	.pending-type-item {
+		padding: 6px 12px;
+		margin: 4px;
+		border-radius: 6px;
+		background-color: #f5f5f5;
+	}
+
+	.pending-type-active {
+		background-color: #e6f7ff;
+		border-width: 1px;
+		border-color: #1890ff;
+		border-style: solid;
+	}
+
+	.pending-type-text {
+		font-size: 13px;
+		color: #666666;
+	}
+
+	.pending-type-text-active {
+		color: #1890ff;
+		font-weight: bold;
+	}
+
+	.direction-row {
+		flex-direction: row;
+	}
+
+	.dir-btn {
+		flex: 1;
+		height: 44px;
+		justify-content: center;
+		align-items: center;
+		border-radius: 8px;
+		margin: 0 4px;
+	}
+
+	.dir-btn-buy {
+		background-color: #e8f5e9;
+	}
+
+	.dir-btn-buy-active {
+		background-color: #4caf50;
+	}
+
+	.dir-btn-sell {
+		background-color: #ffebee;
+	}
+
+	.dir-btn-sell-active {
+		background-color: #f44336;
+	}
+
+	.dir-btn-text {
+		font-size: 15px;
+		color: #666666;
+		font-weight: bold;
+	}
+
+	.dir-btn-text-active {
+		color: #ffffff;
+	}
+
+	.lots-quick {
+		flex-direction: row;
+		margin-bottom: 8px;
+	}
+
+	.lots-item {
+		flex: 1;
+		height: 34px;
+		justify-content: center;
+		align-items: center;
+		margin: 0 3px;
+		border-radius: 6px;
+		background-color: #f5f5f5;
+	}
+
+	.lots-item-active {
+		background-color: #e6f7ff;
+		border-width: 1px;
+		border-color: #1890ff;
+		border-style: solid;
+	}
+
+	.lots-text {
+		font-size: 13px;
+		color: #666666;
+	}
+
+	.lots-text-active {
+		color: #1890ff;
+		font-weight: bold;
+	}
+
+	.form-row {
+		flex-direction: row;
+		align-items: center;
+		margin-top: 8px;
+	}
+
+	.form-label {
+		width: 90px;
+		font-size: 14px;
+		color: #666666;
+	}
+
+	.form-input {
+		flex: 1;
+		height: 38px;
+		background-color: #f5f5f5;
+		border-radius: 6px;
+		padding: 0 12px;
+		font-size: 14px;
+	}
+
+	.fee-row {
+		flex-direction: row;
+		justify-content: space-between;
+		padding: 6px 0;
+	}
+
+	.fee-row-total {
+		border-top-width: 0.5px;
+		border-top-color: #eeeeee;
+		border-top-style: solid;
+		margin-top: 6px;
+		padding-top: 10px;
+	}
+
+	.fee-label {
+		font-size: 13px;
+		color: #666666;
+	}
+
+	.fee-value {
+		font-size: 13px;
+		color: #333333;
+	}
+
+	.fee-label-bold {
+		font-size: 14px;
+		color: #333333;
+		font-weight: bold;
+	}
+
+	.fee-value-bold {
+		font-size: 14px;
+		color: #1890ff;
+		font-weight: bold;
+	}
+
+	.submit-area {
+		padding: 15px 10px;
+		padding-bottom: 30px;
+	}
+
+	.submit-btn {
+		height: 48px;
+		border-radius: 8px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.submit-btn-buy {
+		background-color: #4caf50;
+	}
+
+	.submit-btn-sell {
+		background-color: #f44336;
+	}
+
+	.submit-btn-text {
+		font-size: 17px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+
+	.symbol-picker-mask {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		justify-content: flex-end;
+	}
+
+	.symbol-picker {
+		background-color: #ffffff;
+		border-top-left-radius: 16px;
+		border-top-right-radius: 16px;
+		max-height: 500px;
+	}
+
+	.picker-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 15px;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #eeeeee;
+		border-bottom-style: solid;
+	}
+
+	.picker-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+	}
+
+	.picker-close {
+		font-size: 18px;
+		color: #999999;
+		padding: 4px 8px;
+	}
+
+	.picker-list {
+		max-height: 400px;
+	}
+
+	.picker-item {
+		flex-direction: row;
+		padding: 12px 15px;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #f0f0f0;
+		border-bottom-style: solid;
+		align-items: center;
+	}
+
+	.picker-symbol {
+		font-size: 15px;
+		font-weight: bold;
+		color: #333333;
+		margin-right: 10px;
+	}
+
+	.picker-name {
+		font-size: 13px;
+		color: #999999;
+	}
+
+	.text-green {
+		color: #4caf50;
+	}
+
+	.text-red {
+		color: #f44336;
+	}
+</style>

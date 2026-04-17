@@ -1,0 +1,350 @@
+<template>
+	<view class="assets-page">
+		<view class="account-card">
+			<view class="account-header">
+				<text class="account-title">{{accountType == 'demo' ? '模拟账户' : '实盘账户'}}</text>
+				<view class="account-switch" @click="switchAccountType">
+					<text class="switch-text">切换</text>
+				</view>
+			</view>
+			<view class="balance-section">
+				<text class="balance-label">总资产(USD)</text>
+				<text class="balance-value">${{formatMoney(accountInfo.equity)}}</text>
+			</view>
+			<view class="account-stats">
+				<view class="stat-item">
+					<text class="stat-label">可用余额</text>
+					<text class="stat-value">${{formatMoney(accountInfo.availableMargin)}}</text>
+				</view>
+				<view class="stat-item">
+					<text class="stat-label">冻结保证金</text>
+					<text class="stat-value">${{formatMoney(accountInfo.frozenMargin)}}</text>
+				</view>
+				<view class="stat-item">
+					<text class="stat-label">浮动盈亏</text>
+					<text class="stat-value" :class="accountInfo.floatingPnl >= 0 ? 'text-green' : 'text-red'">
+						{{accountInfo.floatingPnl >= 0 ? '+' : ''}}${{formatMoney(accountInfo.floatingPnl)}}
+					</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="action-row" v-if="accountType == 'real'">
+			<view class="action-btn action-deposit" @click="goDeposit">
+				<text class="action-icon">+</text>
+				<text class="action-text">入金</text>
+			</view>
+			<view class="action-btn action-withdraw" @click="goWithdraw">
+				<text class="action-icon">-</text>
+				<text class="action-text">出金</text>
+			</view>
+		</view>
+
+		<view class="menu-section">
+			<text class="section-title">资金管理</text>
+			<view class="menu-list">
+				<view class="menu-item" @click="goPage('/pages/assets/deposit-records')">
+					<text class="menu-label">入金记录</text>
+					<text class="menu-arrow">></text>
+				</view>
+				<view class="menu-item" @click="goPage('/pages/assets/withdraw-records')">
+					<text class="menu-label">出金记录</text>
+					<text class="menu-arrow">></text>
+				</view>
+				<view class="menu-item" @click="goPage('/pages/assets/flows')">
+					<text class="menu-label">资金流水</text>
+					<text class="menu-arrow">></text>
+				</view>
+				<view class="menu-item" @click="goPage('/pages/assets/bank-card')">
+					<text class="menu-label">收款账户</text>
+					<text class="menu-arrow">></text>
+				</view>
+			</view>
+		</view>
+
+		<view class="summary-section">
+			<text class="section-title">资金摘要</text>
+			<view class="summary-grid">
+				<view class="summary-item">
+					<text class="summary-value">${{formatMoney(accountInfo.totalDeposit)}}</text>
+					<text class="summary-label">累计入金</text>
+				</view>
+				<view class="summary-item">
+					<text class="summary-value">${{formatMoney(accountInfo.totalWithdraw)}}</text>
+					<text class="summary-label">累计出金</text>
+				</view>
+				<view class="summary-item">
+					<text class="summary-value" :class="accountInfo.totalProfit >= 0 ? 'text-green' : 'text-red'">
+						${{formatMoney(accountInfo.totalProfit)}}
+					</text>
+					<text class="summary-label">累计盈亏</text>
+				</view>
+				<view class="summary-item">
+					<text class="summary-value">${{formatMoney(accountInfo.totalCommission + accountInfo.totalSwap)}}</text>
+					<text class="summary-label">累计费用</text>
+				</view>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get } from '@/utils/request.uts'
+
+	type AccountData = {
+		balance : number
+		equity : number
+		frozenMargin : number
+		availableMargin : number
+		floatingPnl : number
+		totalDeposit : number
+		totalWithdraw : number
+		totalCommission : number
+		totalSwap : number
+		totalProfit : number
+	}
+
+	const accountType = ref('real')
+	const accountInfo = reactive({
+		balance: 0,
+		equity: 0,
+		frozenMargin: 0,
+		availableMargin: 0,
+		floatingPnl: 0,
+		totalDeposit: 0,
+		totalWithdraw: 0,
+		totalCommission: 0,
+		totalSwap: 0,
+		totalProfit: 0,
+	} as AccountData)
+
+	function formatMoney(val : number) : string {
+		return val.toFixed(2)
+	}
+
+	function switchAccountType() {
+		accountType.value = accountType.value == 'real' ? 'demo' : 'real'
+		loadAccount()
+	}
+
+	function loadAccount() {
+		get(`/api/mobile/fund/account?accountType=${accountType.value}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				accountInfo.balance = (d['balance'] as number) ?? 0
+				accountInfo.equity = (d['equity'] as number) ?? 0
+				accountInfo.frozenMargin = (d['frozenMargin'] as number) ?? 0
+				accountInfo.availableMargin = (d['availableMargin'] as number) ?? 0
+				accountInfo.floatingPnl = (d['floatingPnl'] as number) ?? 0
+				accountInfo.totalDeposit = (d['totalDeposit'] as number) ?? 0
+				accountInfo.totalWithdraw = (d['totalWithdraw'] as number) ?? 0
+				accountInfo.totalCommission = (d['totalCommission'] as number) ?? 0
+				accountInfo.totalSwap = (d['totalSwap'] as number) ?? 0
+				accountInfo.totalProfit = (d['totalProfit'] as number) ?? 0
+			}
+		})
+	}
+
+	function goDeposit() {
+		uni.navigateTo({ url: '/pages/assets/deposit' })
+	}
+
+	function goWithdraw() {
+		uni.navigateTo({ url: '/pages/assets/withdraw' })
+	}
+
+	function goPage(url : string) {
+		uni.navigateTo({ url: url })
+	}
+
+	onShow(() => {
+		loadAccount()
+	})
+</script>
+
+<style>
+	.assets-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.account-card {
+		margin: 16px;
+		padding: 20px;
+		background: linear-gradient(135deg, #1890FF, #096dd9);
+		border-radius: 12px;
+	}
+
+	.account-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 16px;
+	}
+
+	.account-title {
+		font-size: 16px;
+		color: rgba(255, 255, 255, 0.9);
+		font-weight: bold;
+	}
+
+	.account-switch {
+		padding: 4px 12px;
+		background-color: rgba(255, 255, 255, 0.2);
+		border-radius: 12px;
+	}
+
+	.switch-text {
+		font-size: 12px;
+		color: #ffffff;
+	}
+
+	.balance-section {
+		margin-bottom: 16px;
+	}
+
+	.balance-label {
+		font-size: 12px;
+		color: rgba(255, 255, 255, 0.7);
+		margin-bottom: 4px;
+	}
+
+	.balance-value {
+		font-size: 32px;
+		color: #ffffff;
+		font-weight: bold;
+	}
+
+	.account-stats {
+		flex-direction: row;
+		justify-content: space-between;
+	}
+
+	.stat-item {
+		align-items: center;
+	}
+
+	.stat-label {
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.6);
+		margin-bottom: 4px;
+	}
+
+	.stat-value {
+		font-size: 14px;
+		color: #ffffff;
+	}
+
+	.text-green {
+		color: #52c41a;
+	}
+
+	.text-red {
+		color: #ff4d4f;
+	}
+
+	.action-row {
+		flex-direction: row;
+		padding: 0 16px;
+		margin-bottom: 16px;
+	}
+
+	.action-btn {
+		flex: 1;
+		flex-direction: row;
+		align-items: center;
+		justify-content: center;
+		padding: 14px;
+		border-radius: 8px;
+		margin: 0 6px;
+	}
+
+	.action-deposit {
+		background-color: #1890FF;
+	}
+
+	.action-withdraw {
+		background-color: #fa8c16;
+	}
+
+	.action-icon {
+		font-size: 20px;
+		color: #ffffff;
+		font-weight: bold;
+		margin-right: 6px;
+	}
+
+	.action-text {
+		font-size: 16px;
+		color: #ffffff;
+		font-weight: bold;
+	}
+
+	.menu-section {
+		margin: 0 16px 16px;
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+	}
+
+	.section-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 12px;
+	}
+
+	.menu-list {
+		/* container */
+	}
+
+	.menu-item {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 14px 0;
+		border-bottom-width: 1px;
+		border-bottom-style: solid;
+		border-bottom-color: #f0f0f0;
+	}
+
+	.menu-label {
+		font-size: 15px;
+		color: #333333;
+	}
+
+	.menu-arrow {
+		font-size: 14px;
+		color: #cccccc;
+	}
+
+	.summary-section {
+		margin: 0 16px 16px;
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+	}
+
+	.summary-grid {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.summary-item {
+		width: 50%;
+		align-items: center;
+		padding: 12px 0;
+	}
+
+	.summary-value {
+		font-size: 18px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 4px;
+	}
+
+	.summary-label {
+		font-size: 12px;
+		color: #999999;
+	}
+</style>

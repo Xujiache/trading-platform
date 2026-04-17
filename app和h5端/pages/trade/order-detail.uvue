@@ -1,0 +1,665 @@
+<template>
+	<view class="detail-page">
+		<scroll-view class="detail-scroll" direction="vertical" v-if="order != null">
+			<view class="status-card"
+				:class="(order!['status'] as string) == 'open' ? 'status-open' : 'status-closed'">
+				<view class="status-header">
+					<text class="status-symbol">{{order!['symbol'] as string}}</text>
+					<text class="status-name">{{order!['symbol_name'] as string}}</text>
+				</view>
+				<view class="status-main">
+					<view class="direction-badge-lg"
+						:class="(order!['direction'] as string) == 'buy' ? 'badge-buy' : 'badge-sell'">
+						<text class="direction-text-lg">
+							{{(order!['direction'] as string) == 'buy' ? '买入' : '卖出'}}
+						</text>
+					</view>
+					<text class="status-lots">{{order!['lots']}}手</text>
+					<text class="status-leverage">{{order!['leverage']}}x</text>
+				</view>
+				<view class="pnl-display" v-if="(order!['status'] as string) == 'closed'">
+					<text class="pnl-label">净盈亏</text>
+					<text class="pnl-value"
+						:class="parseFloat((order!['net_pnl'] ?? '0') + '') >= 0 ? 'text-green' : 'text-red'">
+						${{formatMoney(parseFloat((order!['net_pnl'] ?? '0') + ''))}}
+					</text>
+				</view>
+				<view class="pnl-display" v-else>
+					<text class="pnl-label">浮动盈亏</text>
+					<text class="pnl-value"
+						:class="parseFloat((order!['floating_pnl'] ?? '0') + '') >= 0 ? 'text-green' : 'text-red'">
+						${{formatMoney(parseFloat((order!['floating_pnl'] ?? '0') + ''))}}
+					</text>
+				</view>
+			</view>
+
+			<view class="info-section">
+				<text class="info-title">订单信息</text>
+				<view class="info-row">
+					<text class="info-label">订单号</text>
+					<text class="info-val">{{order!['order_no'] as string}}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">状态</text>
+					<text class="info-val">{{getStatusText(order!['status'] as string)}}</text>
+				</view>
+				<view class="info-row" v-if="order!['pending_type'] != null">
+					<text class="info-label">挂单类型</text>
+					<text class="info-val">{{getPendingTypeText(order!['pending_type'] as string)}}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">{{order!['record_type'] == 'pending' ? '目标价' : '开仓价'}}</text>
+					<text class="info-val">{{order!['open_price']}}</text>
+				</view>
+				<view class="info-row" v-if="(order!['status'] as string) == 'open' && order!['currentPrice'] != null">
+					<text class="info-label">当前价</text>
+					<text class="info-val">{{order!['currentPrice']}}</text>
+				</view>
+				<view class="info-row" v-if="order!['close_price'] != null">
+					<text class="info-label">平仓价</text>
+					<text class="info-val">{{order!['close_price']}}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">止损价</text>
+					<text class="info-val">{{order!['stop_loss'] ?? '未设置'}}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">止盈价</text>
+					<text class="info-val">{{order!['take_profit'] ?? '未设置'}}</text>
+				</view>
+				<view class="info-row" v-if="order!['trailing_stop'] != null">
+					<text class="info-label">移动止损</text>
+					<text class="info-val">{{order!['trailing_stop']}} 点</text>
+				</view>
+			</view>
+
+			<view class="info-section">
+				<text class="info-title">费用明细</text>
+				<view class="info-row">
+					<text class="info-label">保证金</text>
+					<text class="info-val">${{formatMoney(parseFloat((order!['margin'] ?? '0') + ''))}}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">开仓手续费</text>
+					<text class="info-val">${{formatMoney(parseFloat((order!['commission'] ?? '0') + ''))}}</text>
+				</view>
+				<view class="info-row" v-if="order!['commission_close'] != null">
+					<text class="info-label">平仓手续费</text>
+					<text class="info-val">${{formatMoney(parseFloat((order!['commission_close'] ?? '0') + ''))}}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">点差成本</text>
+					<text class="info-val">${{formatMoney(parseFloat((order!['spread_cost'] ?? '0') + ''))}}</text>
+				</view>
+				<view class="info-row">
+					<text class="info-label">累计隔夜费</text>
+					<text class="info-val">${{formatMoney(parseFloat((order!['swap_total'] ?? '0') + ''))}}</text>
+				</view>
+				<view class="info-row" v-if="(order!['status'] as string) == 'closed'">
+					<text class="info-label">已实现盈亏</text>
+					<text class="info-val"
+						:class="parseFloat((order!['realized_pnl'] ?? '0') + '') >= 0 ? 'text-green' : 'text-red'">
+						${{formatMoney(parseFloat((order!['realized_pnl'] ?? '0') + ''))}}
+					</text>
+				</view>
+			</view>
+
+			<view class="info-section">
+				<text class="info-title">时间信息</text>
+				<view class="info-row">
+					<text class="info-label">开仓时间</text>
+					<text class="info-val">{{formatTime(order!['opened_at'])}}</text>
+				</view>
+				<view class="info-row" v-if="order!['closed_at'] != null">
+					<text class="info-label">平仓时间</text>
+					<text class="info-val">{{formatTime(order!['closed_at'])}}</text>
+				</view>
+				<view class="info-row" v-if="order!['close_type'] != null">
+					<text class="info-label">平仓方式</text>
+					<text class="info-val">{{getCloseTypeText(order!['close_type'] as string)}}</text>
+				</view>
+			</view>
+
+			<view class="info-section" v-if="flows.length > 0">
+				<text class="info-title">交易流水</text>
+				<view v-for="(flow, idx) in flows" :key="idx" class="flow-item">
+					<view class="flow-left">
+						<text class="flow-type">{{getFlowTypeText(flow['flow_type'] as string)}}</text>
+						<text class="flow-time">{{formatTime(flow['created_at'])}}</text>
+					</view>
+					<text class="flow-amount"
+						:class="parseFloat((flow['amount'] ?? '0') + '') >= 0 ? 'text-green' : 'text-red'">
+						{{parseFloat((flow['amount'] ?? '0') + '') >= 0 ? '+' : ''}}${{formatMoney(parseFloat((flow['amount'] ?? '0') + ''))}}
+					</text>
+				</view>
+			</view>
+
+			<view class="bottom-actions" v-if="(order!['status'] as string) == 'open'">
+				<view class="action-row">
+					<view class="bottom-btn bottom-btn-outline" @click="openEditSltp">
+						<text class="bottom-btn-text-outline">修改止损止盈</text>
+					</view>
+					<view class="bottom-btn bottom-btn-danger" @click="closeThisOrder">
+						<text class="bottom-btn-text-light">平仓</text>
+					</view>
+				</view>
+			</view>
+
+			<view style="height: 30px;"></view>
+		</scroll-view>
+
+		<view class="sltp-modal-mask" v-if="showEditSltp" @click="showEditSltp = false">
+			<view class="sltp-modal" @click.stop="">
+				<view class="sltp-header">
+					<text class="sltp-title">修改止损止盈</text>
+					<text class="sltp-close" @click="showEditSltp = false">✕</text>
+				</view>
+				<view class="sltp-body">
+					<view class="sltp-row">
+						<text class="sltp-label">止损价</text>
+						<input class="sltp-input" type="digit" placeholder="留空取消止损" :value="editStopLoss"
+							@input="(e : InputEvent) => { editStopLoss = e.detail.value }" />
+					</view>
+					<view class="sltp-row">
+						<text class="sltp-label">止盈价</text>
+						<input class="sltp-input" type="digit" placeholder="留空取消止盈" :value="editTakeProfit"
+							@input="(e : InputEvent) => { editTakeProfit = e.detail.value }" />
+					</view>
+					<view class="sltp-row">
+						<text class="sltp-label">移动止损(点数)</text>
+						<input class="sltp-input" type="digit" placeholder="留空取消移动止损" :value="editTrailingStop"
+							@input="(e : InputEvent) => { editTrailingStop = e.detail.value }" />
+					</view>
+					<view class="sltp-hint">
+						<text class="sltp-hint-text">买入订单：止损价须低于开仓价，止盈价须高于开仓价</text>
+						<text class="sltp-hint-text">卖出订单：止损价须高于开仓价，止盈价须低于开仓价</text>
+					</view>
+				</view>
+				<view class="sltp-footer">
+					<view class="sltp-btn sltp-btn-cancel" @click="showEditSltp = false">
+						<text class="sltp-btn-text-cancel">取消</text>
+					</view>
+					<view class="sltp-btn sltp-btn-confirm" @click="submitSltp">
+						<text class="sltp-btn-text-confirm">确定修改</text>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<view v-if="order == null" class="loading-view">
+			<text class="loading-text">加载中...</text>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get, post, put } from '@/utils/request.uts'
+
+	const order = ref<UTSJSONObject | null>(null)
+	const flows = ref<UTSJSONObject[]>([])
+	const showEditSltp = ref(false)
+	const editStopLoss = ref('')
+	const editTakeProfit = ref('')
+	const editTrailingStop = ref('')
+	let orderId = 0
+	let recordType = ''
+	let refreshTimer = 0
+
+	onLoad((options : OnLoadOptions) => {
+		if (options['id'] != null) {
+			orderId = parseInt(options['id']!)
+			recordType = (options['record_type'] ?? '') as string
+			loadOrder()
+		}
+	})
+
+	onShow(() => {
+		if (orderId > 0) {
+			refreshTimer = setInterval(() => {
+				if (order.value != null && (order.value!['status'] as string) == 'open') {
+					loadOrder()
+				}
+			}, 3000) as number
+		}
+	})
+
+	onHide(() => {
+		if (refreshTimer > 0) {
+			clearInterval(refreshTimer)
+			refreshTimer = 0
+		}
+	})
+
+	function loadOrder() {
+		const rtParam = recordType.length > 0 ? `?record_type=${recordType}` : ''
+		get(`/api/mobile/trade/orders/${orderId}${rtParam}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				order.value = d
+				const f = d['flows']
+				if (f != null) {
+					const fArr = JSON.parse<UTSJSONObject[]>(JSON.stringify(f))
+					if (fArr != null) flows.value = fArr!
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function openEditSltp() {
+		if (order.value == null) return
+		const o = order.value!
+		editStopLoss.value = o['stop_loss'] != null ? (o['stop_loss'] as number).toString() : ''
+		editTakeProfit.value = o['take_profit'] != null ? (o['take_profit'] as number).toString() : ''
+		editTrailingStop.value = o['trailing_stop'] != null ? (o['trailing_stop'] as number).toString() : ''
+		showEditSltp.value = true
+	}
+
+	function submitSltp() {
+		const data = {} as UTSJSONObject
+		data['stopLoss'] = editStopLoss.value.length > 0 ? parseFloat(editStopLoss.value) : null
+		data['takeProfit'] = editTakeProfit.value.length > 0 ? parseFloat(editTakeProfit.value) : null
+		data['trailingStop'] = editTrailingStop.value.length > 0 ? parseFloat(editTrailingStop.value) : null
+
+		put(`/api/mobile/trade/order/${orderId}/sltp`, data).then((res) => {
+			if (res.code == 200) {
+				uni.showToast({ title: '修改成功', icon: 'success' })
+				showEditSltp.value = false
+				loadOrder()
+			} else {
+				uni.showToast({ title: res.msg, icon: 'none' })
+			}
+		}).catch((_e : any) => {
+			uni.showToast({ title: '修改失败', icon: 'none' })
+		})
+	}
+
+	function closeThisOrder() {
+		uni.showModal({
+			title: '确认平仓',
+			content: '确定要平仓该订单吗？',
+			success: (modalRes) => {
+				if (modalRes.confirm) {
+					post(`/api/mobile/trade/close/${orderId}`, {}).then((res) => {
+						if (res.code == 200) {
+							uni.showToast({ title: '平仓成功', icon: 'success' })
+							loadOrder()
+						} else {
+							uni.showToast({ title: res.msg, icon: 'none' })
+						}
+					}).catch((_e : any) => {
+						uni.showToast({ title: '平仓失败', icon: 'none' })
+					})
+				}
+			}
+		})
+	}
+
+	function formatMoney(val : number) : string {
+		return val.toFixed(2)
+	}
+
+	function formatTime(t : any) : string {
+		if (t == null) return '-'
+		const s = t as string
+		if (s.length > 19) return s.substring(0, 19).replace('T', ' ')
+		return s.replace('T', ' ')
+	}
+
+	function getStatusText(s : string) : string {
+		if (s == 'open') return '持仓中'
+		if (s == 'closed') return '已平仓'
+		if (s == 'cancelled') return recordType == 'pending' ? '挂单已撤销' : '已取消'
+		if (s == 'expired') return '挂单已过期'
+		return s
+	}
+
+	function getCloseTypeText(t : string) : string {
+		if (t == 'manual') return '手动平仓'
+		if (t == 'stop_loss') return '止损平仓'
+		if (t == 'take_profit') return '止盈平仓'
+		if (t == 'admin') return '管理员平仓'
+		if (t == 'trailing_stop') return '移动止损'
+		if (t == 'force_close') return '强制平仓'
+		return t
+	}
+
+	function getPendingTypeText(t : string) : string {
+		if (t == 'buy_limit') return '买入限价'
+		if (t == 'buy_stop') return '买入止损'
+		if (t == 'sell_limit') return '卖出限价'
+		if (t == 'sell_stop') return '卖出止损'
+		return t
+	}
+
+	function getFlowTypeText(t : string) : string {
+		if (t == 'open') return '开仓'
+		if (t == 'close') return '平仓'
+		if (t == 'commission') return '手续费'
+		if (t == 'swap') return '隔夜费'
+		return t
+	}
+</script>
+
+<style>
+	.detail-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.detail-scroll {
+		flex: 1;
+	}
+
+	.status-card {
+		padding: 20px 15px;
+		margin: 10px;
+		border-radius: 12px;
+	}
+
+	.status-open {
+		background-color: #1a237e;
+	}
+
+	.status-closed {
+		background-color: #37474f;
+	}
+
+	.status-header {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.status-symbol {
+		font-size: 20px;
+		font-weight: bold;
+		color: #ffffff;
+		margin-right: 8px;
+	}
+
+	.status-name {
+		font-size: 14px;
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.status-main {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.direction-badge-lg {
+		padding: 4px 12px;
+		border-radius: 4px;
+		margin-right: 10px;
+	}
+
+	.badge-buy {
+		background-color: rgba(76, 175, 80, 0.3);
+	}
+
+	.badge-sell {
+		background-color: rgba(244, 67, 54, 0.3);
+	}
+
+	.direction-text-lg {
+		font-size: 14px;
+		font-weight: bold;
+		color: #ffffff;
+	}
+
+	.status-lots {
+		font-size: 14px;
+		color: rgba(255, 255, 255, 0.8);
+		margin-right: 10px;
+	}
+
+	.status-leverage {
+		font-size: 14px;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.pnl-display {
+		align-items: center;
+	}
+
+	.pnl-label {
+		font-size: 12px;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.pnl-value {
+		font-size: 28px;
+		font-weight: bold;
+		margin-top: 4px;
+	}
+
+	.info-section {
+		margin: 8px 10px;
+		padding: 12px;
+		background-color: #ffffff;
+		border-radius: 8px;
+	}
+
+	.info-title {
+		font-size: 14px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 10px;
+	}
+
+	.info-row {
+		flex-direction: row;
+		justify-content: space-between;
+		padding: 8px 0;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #f5f5f5;
+		border-bottom-style: solid;
+	}
+
+	.info-label {
+		font-size: 13px;
+		color: #999999;
+	}
+
+	.info-val {
+		font-size: 13px;
+		color: #333333;
+	}
+
+	.flow-item {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 8px 0;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #f5f5f5;
+		border-bottom-style: solid;
+	}
+
+	.flow-left {
+		flex: 1;
+	}
+
+	.flow-type {
+		font-size: 13px;
+		color: #333333;
+	}
+
+	.flow-time {
+		font-size: 11px;
+		color: #999999;
+		margin-top: 2px;
+	}
+
+	.flow-amount {
+		font-size: 14px;
+		font-weight: bold;
+	}
+
+	.bottom-actions {
+		padding: 15px 10px;
+	}
+
+	.action-row {
+		flex-direction: row;
+	}
+
+	.bottom-btn {
+		flex: 1;
+		height: 44px;
+		border-radius: 8px;
+		justify-content: center;
+		align-items: center;
+		margin: 0 5px;
+	}
+
+	.bottom-btn-outline {
+		border-width: 1px;
+		border-color: #1890ff;
+		border-style: solid;
+		background-color: #ffffff;
+	}
+
+	.bottom-btn-danger {
+		background-color: #ff4d4f;
+	}
+
+	.bottom-btn-text-outline {
+		font-size: 15px;
+		color: #1890ff;
+		font-weight: bold;
+	}
+
+	.bottom-btn-text-light {
+		font-size: 15px;
+		color: #ffffff;
+		font-weight: bold;
+	}
+
+	.text-green {
+		color: #4caf50;
+	}
+
+	.text-red {
+		color: #f44336;
+	}
+
+	.sltp-modal-mask {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background-color: rgba(0, 0, 0, 0.5);
+		justify-content: center;
+		align-items: center;
+	}
+
+	.sltp-modal {
+		width: 320px;
+		background-color: #ffffff;
+		border-radius: 12px;
+		overflow: hidden;
+	}
+
+	.sltp-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		padding: 15px;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #eeeeee;
+		border-bottom-style: solid;
+	}
+
+	.sltp-title {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+	}
+
+	.sltp-close {
+		font-size: 18px;
+		color: #999999;
+		padding: 4px 8px;
+	}
+
+	.sltp-body {
+		padding: 15px;
+	}
+
+	.sltp-row {
+		margin-bottom: 12px;
+	}
+
+	.sltp-label {
+		font-size: 13px;
+		color: #666666;
+		margin-bottom: 6px;
+	}
+
+	.sltp-input {
+		height: 38px;
+		background-color: #f5f5f5;
+		border-radius: 6px;
+		padding: 0 12px;
+		font-size: 14px;
+	}
+
+	.sltp-hint {
+		margin-top: 8px;
+	}
+
+	.sltp-hint-text {
+		font-size: 11px;
+		color: #999999;
+		line-height: 18px;
+	}
+
+	.sltp-footer {
+		flex-direction: row;
+		border-top-width: 0.5px;
+		border-top-color: #eeeeee;
+		border-top-style: solid;
+	}
+
+	.sltp-btn {
+		flex: 1;
+		height: 44px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.sltp-btn-cancel {
+		border-right-width: 0.5px;
+		border-right-color: #eeeeee;
+		border-right-style: solid;
+	}
+
+	.sltp-btn-text-cancel {
+		font-size: 15px;
+		color: #666666;
+	}
+
+	.sltp-btn-confirm {
+		background-color: #1890ff;
+	}
+
+	.sltp-btn-text-confirm {
+		font-size: 15px;
+		color: #ffffff;
+		font-weight: bold;
+	}
+
+	.loading-view {
+		flex: 1;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.loading-text {
+		font-size: 14px;
+		color: #999999;
+	}
+</style>

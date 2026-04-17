@@ -1,0 +1,406 @@
+<template>
+	<view class="market-page">
+		<view class="search-bar">
+			<input class="search-input" type="text" placeholder="搜索品种代码或名称" :value="keyword"
+				@input="onSearchInput" />
+		</view>
+
+		<scroll-view class="tab-scroll" direction="horizontal" :show-scrollbar="false">
+			<view class="tab-list">
+				<view v-for="(tab, idx) in boardTabs" :key="idx" class="tab-item"
+					:class="{'tab-active': activeBoardTab == idx}" @click="switchBoardTab(idx)">
+					<text class="tab-text" :class="{'tab-text-active': activeBoardTab == idx}">{{tab}}</text>
+				</view>
+			</view>
+		</scroll-view>
+
+		<scroll-view class="category-scroll" direction="horizontal" :show-scrollbar="false">
+			<view class="category-list">
+				<view v-for="(cat, idx) in categories" :key="idx" class="category-item"
+					:class="{'category-active': activeCategory == idx}" @click="switchCategory(idx)">
+					<text class="category-text" :class="{'category-text-active': activeCategory == idx}">{{cat.label}}</text>
+				</view>
+			</view>
+		</scroll-view>
+
+		<view class="list-header">
+			<text class="header-col-name">品种</text>
+			<text class="header-col-price">最新价</text>
+			<text class="header-col-change">涨跌幅</text>
+		</view>
+
+		<scroll-view class="symbol-list" direction="vertical">
+			<view v-for="(item, idx) in filteredSymbols" :key="idx" class="symbol-row" @click="goDetail(item)">
+				<view class="symbol-info">
+					<text class="symbol-code">{{item.symbol}}</text>
+					<text class="symbol-name">{{item.name}}</text>
+				</view>
+				<text class="symbol-price">{{formatPrice(item.bid, item.price_decimals)}}</text>
+				<view class="change-badge" :class="item.change >= 0 ? 'change-up' : 'change-down'">
+					<text class="change-text">{{item.change >= 0 ? '+' : ''}}{{item.change_percent.toFixed(2)}}%</text>
+				</view>
+			</view>
+			<view v-if="filteredSymbols.length == 0" class="empty-view">
+				<text class="empty-text">暂无数据</text>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get } from '@/utils/request.uts'
+	import { connectWebSocket, subscribeSymbols, disconnectWebSocket } from '@/utils/websocket.uts'
+
+	type SymbolItem = {
+		id : number
+		symbol : string
+		name : string
+		category : string
+		is_hot : boolean
+		price_decimals : number
+		bid : number
+		ask : number
+		high : number
+		low : number
+		open : number
+		change : number
+		change_percent : number
+		volume : number
+	}
+
+	const boardTabs = ['全部', '自选', '热门', '涨幅榜', '跌幅榜', '高波动']
+	const categories = [
+		{ key: 'all', label: '全部' },
+		{ key: 'precious_metal', label: '贵金属' },
+		{ key: 'energy', label: '能源' },
+		{ key: 'forex', label: '外汇' },
+	]
+
+	const symbols = ref<SymbolItem[]>([])
+	const keyword = ref('')
+	const activeBoardTab = ref(0)
+	const activeCategory = ref(0)
+	let refreshTimer = 0
+
+	const favorites = ref<string[]>([])
+
+	onLoad(() => {
+		loadFavorites()
+		loadSymbols()
+		connectWebSocket((tickData : any) => {
+			if (tickData == null) return
+			const obj = tickData as UTSJSONObject
+			const sym = obj['symbol'] as string
+			for (let i = 0; i < symbols.value.length; i++) {
+				if (symbols.value[i].symbol == sym) {
+					symbols.value[i].bid = obj['bid'] as number
+					symbols.value[i].ask = obj['ask'] as number
+					symbols.value[i].high = obj['high'] as number
+					symbols.value[i].low = obj['low'] as number
+					symbols.value[i].change = obj['change'] as number
+					symbols.value[i].change_percent = obj['change_percent'] as number
+					symbols.value[i].volume = obj['volume'] as number
+					break
+				}
+			}
+		})
+	})
+
+	onUnload(() => {
+		if (refreshTimer > 0) {
+			clearInterval(refreshTimer)
+		}
+		disconnectWebSocket()
+	})
+
+	const filteredSymbols = computed((): SymbolItem[] => {
+		let list = symbols.value.slice(0)
+
+		const catKey = categories[activeCategory.value].key
+		if (catKey != 'all') {
+			list = list.filter((s : SymbolItem) : boolean => s.category == catKey)
+		}
+
+		if (keyword.value.length > 0) {
+			const kw = keyword.value.toLowerCase()
+			list = list.filter((s : SymbolItem) : boolean =>
+				s.symbol.toLowerCase().indexOf(kw) >= 0 || s.name.toLowerCase().indexOf(kw) >= 0
+			)
+		}
+
+		const tab = activeBoardTab.value
+		if (tab == 1) {
+			list = list.filter((s : SymbolItem) : boolean => favorites.value.indexOf(s.symbol) >= 0)
+		} else if (tab == 2) {
+			list = list.filter((s : SymbolItem) : boolean => s.is_hot)
+		} else if (tab == 3) {
+			list.sort((a : SymbolItem, b : SymbolItem) : number => {
+				if (b.change_percent > a.change_percent) return 1
+				if (b.change_percent < a.change_percent) return -1
+				return 0
+			})
+		} else if (tab == 4) {
+			list.sort((a : SymbolItem, b : SymbolItem) : number => {
+				if (a.change_percent > b.change_percent) return 1
+				if (a.change_percent < b.change_percent) return -1
+				return 0
+			})
+		} else if (tab == 5) {
+			list.sort((a : SymbolItem, b : SymbolItem) : number => {
+				const aVol = Math.abs(a.change_percent)
+				const bVol = Math.abs(b.change_percent)
+				if (bVol > aVol) return 1
+				if (bVol < aVol) return -1
+				return 0
+			})
+		}
+
+		return list
+	})
+
+	function loadFavorites() {
+		const stored = uni.getStorageSync('market_favorites') as string
+		if (stored.length > 0) {
+			const arr = JSON.parse<string[]>(stored)
+			if (arr != null) {
+				favorites.value = arr!
+			}
+		}
+	}
+
+	function loadSymbols() {
+		get('/api/mobile/market/symbols').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const arr = JSON.parse<SymbolItem[]>(JSON.stringify(res.data))
+				if (arr != null) {
+					symbols.value = arr!
+					const symCodes : string[] = []
+					for (let i = 0; i < arr!.length; i++) {
+						symCodes.push(arr![i].symbol)
+					}
+					subscribeSymbols(symCodes)
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function onSearchInput(e : InputEvent) {
+		keyword.value = e.detail.value
+	}
+
+	function switchBoardTab(idx : number) {
+		activeBoardTab.value = idx
+	}
+
+	function switchCategory(idx : number) {
+		activeCategory.value = idx
+	}
+
+	function formatPrice(price : number, decimals : number) : string {
+		return price.toFixed(decimals)
+	}
+
+	function goDetail(item : SymbolItem) {
+		uni.navigateTo({
+			url: `/pages/market/detail?id=${item.id}&symbol=${item.symbol}`
+		})
+	}
+</script>
+
+<style>
+	.market-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.search-bar {
+		padding: 10px 15px;
+		background-color: #ffffff;
+	}
+
+	.search-input {
+		background-color: #f5f5f5;
+		border-radius: 20px;
+		padding: 8px 15px;
+		font-size: 14px;
+		height: 36px;
+	}
+
+	.tab-scroll {
+		background-color: #ffffff;
+		height: 44px;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #eeeeee;
+		border-bottom-style: solid;
+	}
+
+	.tab-list {
+		flex-direction: row;
+		align-items: center;
+		padding: 0 10px;
+		height: 44px;
+	}
+
+	.tab-item {
+		padding: 0 14px;
+		height: 44px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.tab-active {
+		border-bottom-width: 2px;
+		border-bottom-color: #1890FF;
+		border-bottom-style: solid;
+	}
+
+	.tab-text {
+		font-size: 14px;
+		color: #666666;
+	}
+
+	.tab-text-active {
+		color: #1890FF;
+		font-weight: bold;
+	}
+
+	.category-scroll {
+		background-color: #ffffff;
+		height: 40px;
+	}
+
+	.category-list {
+		flex-direction: row;
+		align-items: center;
+		padding: 0 10px;
+		height: 40px;
+	}
+
+	.category-item {
+		padding: 4px 12px;
+		margin: 0 4px;
+		border-radius: 15px;
+		background-color: #f5f5f5;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.category-active {
+		background-color: #e6f7ff;
+	}
+
+	.category-text {
+		font-size: 13px;
+		color: #666666;
+	}
+
+	.category-text-active {
+		color: #1890FF;
+	}
+
+	.list-header {
+		flex-direction: row;
+		padding: 8px 15px;
+		background-color: #fafafa;
+		align-items: center;
+	}
+
+	.header-col-name {
+		flex: 1;
+		font-size: 12px;
+		color: #999999;
+	}
+
+	.header-col-price {
+		width: 100px;
+		font-size: 12px;
+		color: #999999;
+		text-align: right;
+	}
+
+	.header-col-change {
+		width: 90px;
+		font-size: 12px;
+		color: #999999;
+		text-align: right;
+	}
+
+	.symbol-list {
+		flex: 1;
+		background-color: #ffffff;
+	}
+
+	.symbol-row {
+		flex-direction: row;
+		align-items: center;
+		padding: 12px 15px;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #f0f0f0;
+		border-bottom-style: solid;
+	}
+
+	.symbol-info {
+		flex: 1;
+	}
+
+	.symbol-code {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+	}
+
+	.symbol-name {
+		font-size: 12px;
+		color: #999999;
+		margin-top: 2px;
+	}
+
+	.symbol-price {
+		width: 100px;
+		font-size: 16px;
+		color: #333333;
+		text-align: right;
+		font-weight: 500;
+	}
+
+	.change-badge {
+		width: 80px;
+		height: 30px;
+		border-radius: 4px;
+		justify-content: center;
+		align-items: center;
+		margin-left: 10px;
+	}
+
+	.change-up {
+		background-color: #e8f5e9;
+	}
+
+	.change-down {
+		background-color: #ffebee;
+	}
+
+	.change-text {
+		font-size: 13px;
+		font-weight: bold;
+	}
+
+	.change-up .change-text {
+		color: #4caf50;
+	}
+
+	.change-down .change-text {
+		color: #f44336;
+	}
+
+	.empty-view {
+		padding: 60px 0;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.empty-text {
+		font-size: 14px;
+		color: #999999;
+	}
+</style>

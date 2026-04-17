@@ -1,0 +1,168 @@
+<template>
+	<scroll-view class="kyc-page" direction="vertical">
+		<view class="status-card" v-if="kycStatus != 'none'">
+			<text class="status-label">认证状态</text>
+			<text :class="'status-value status-' + kycStatus">{{statusText}}</text>
+			<text class="reject-reason" v-if="kycStatus == 'rejected' && rejectReason.length > 0">驳回原因: {{rejectReason}}</text>
+		</view>
+
+		<view class="form-section" v-if="kycStatus == 'none' || kycStatus == 'rejected'">
+			<text class="form-title">实名认证</text>
+
+			<view class="form-item">
+				<text class="label">真实姓名</text>
+				<input class="input" v-model="realName" placeholder="请输入真实姓名" />
+			</view>
+
+			<view class="form-item">
+				<text class="label">证件号码</text>
+				<input class="input" v-model="idCard" placeholder="请输入证件号码" />
+			</view>
+
+			<view class="form-item">
+				<text class="label">证件正面</text>
+				<view class="upload-area" @click="chooseImage('front')">
+					<image v-if="frontImage.length > 0" :src="frontImage" class="preview-img" mode="aspectFit" />
+					<text v-else class="upload-text">+ 点击上传</text>
+				</view>
+			</view>
+
+			<view class="form-item">
+				<text class="label">证件反面</text>
+				<view class="upload-area" @click="chooseImage('back')">
+					<image v-if="backImage.length > 0" :src="backImage" class="preview-img" mode="aspectFit" />
+					<text v-else class="upload-text">+ 点击上传</text>
+				</view>
+			</view>
+
+			<view class="form-item">
+				<text class="label">人脸照片</text>
+				<view class="upload-area" @click="chooseImage('face')">
+					<image v-if="faceImage.length > 0" :src="faceImage" class="preview-img" mode="aspectFit" />
+					<text v-else class="upload-text">+ 点击上传</text>
+				</view>
+			</view>
+
+			<view class="submit-btn" @click="submitKyc">
+				<text class="submit-text">提交认证</text>
+			</view>
+		</view>
+
+		<view class="info-section" v-if="kycStatus == 'approved'">
+			<text class="info-label">姓名: {{realName}}</text>
+			<text class="info-label">证件号: {{idCard}}</text>
+		</view>
+
+		<view class="pending-section" v-if="kycStatus == 'pending'">
+			<text class="pending-text">您的认证资料已提交，请耐心等待审核</text>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { get, post } from '../../utils/request.uts'
+
+	const kycStatus = ref('none')
+	const rejectReason = ref('')
+	const realName = ref('')
+	const idCard = ref('')
+	const frontImage = ref('')
+	const backImage = ref('')
+	const faceImage = ref('')
+
+	const statusText = computed(() : string => {
+		if (kycStatus.value == 'pending') return '审核中'
+		if (kycStatus.value == 'approved') return '已通过'
+		if (kycStatus.value == 'rejected') return '已驳回'
+		return '未认证'
+	})
+
+	onLoad(() => { loadStatus() })
+
+	function loadStatus() {
+		get('/api/mobile/user/kyc/status').then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				kycStatus.value = (d['kyc_status'] as string) ?? 'none'
+				rejectReason.value = (d['kyc_reject_reason'] as string) ?? ''
+				realName.value = (d['real_name'] as string) ?? ''
+				idCard.value = (d['id_card'] as string) ?? ''
+				frontImage.value = (d['kyc_front_image'] as string) ?? ''
+				backImage.value = (d['kyc_back_image'] as string) ?? ''
+				faceImage.value = (d['kyc_face_image'] as string) ?? ''
+			}
+		}).catch((_e) => {})
+	}
+
+	function chooseImage(type : string) {
+		uni.chooseImage({
+			count: 1,
+			success: (res) => {
+				const path = res.tempFilePaths[0]
+				uni.uploadFile({
+					url: 'http://localhost:3000/api/mobile/user/kyc/upload',
+					filePath: path,
+					name: 'file',
+					header: { 'Authorization': `Bearer ${uni.getStorageSync('token') as string}` },
+					success: (uploadRes) => {
+						const data = JSON.parse<UTSJSONObject>(uploadRes.data)
+						if (data != null) {
+							const d = data!['data'] as UTSJSONObject
+							if (d != null) {
+								const url = (d!['url'] as string) ?? ''
+								if (type == 'front') frontImage.value = url
+								else if (type == 'back') backImage.value = url
+								else faceImage.value = url
+							}
+						}
+					}
+				})
+			}
+		})
+	}
+
+	function submitKyc() {
+		if (realName.value.length == 0 || idCard.value.length == 0) {
+			uni.showToast({ title: '请填写姓名和证件号', icon: 'none' }); return
+		}
+		if (frontImage.value.length == 0 || backImage.value.length == 0 || faceImage.value.length == 0) {
+			uni.showToast({ title: '请上传所有证件照片', icon: 'none' }); return
+		}
+		post('/api/mobile/user/kyc/submit', {
+			real_name: realName.value, id_card: idCard.value,
+			front_image: frontImage.value, back_image: backImage.value, face_image: faceImage.value
+		} as UTSJSONObject).then((res) => {
+			if (res.code == 200 || res.code == 201) {
+				uni.showToast({ title: '提交成功', icon: 'success' })
+				kycStatus.value = 'pending'
+			} else {
+				uni.showToast({ title: res.msg, icon: 'none' })
+			}
+		}).catch((_e) => {})
+	}
+</script>
+
+<style>
+	.kyc-page { flex: 1; background-color: #f5f5f5; }
+	.status-card { margin: 16px; padding: 20px; background-color: #ffffff; border-radius: 8px; align-items: center; }
+	.status-label { font-size: 14px; color: #999999; margin-bottom: 8px; }
+	.status-value { font-size: 18px; font-weight: bold; }
+	.status-pending { color: #e6a23c; }
+	.status-approved { color: #67c23a; }
+	.status-rejected { color: #f56c6c; }
+	.reject-reason { font-size: 13px; color: #f56c6c; margin-top: 8px; }
+	.form-section { margin: 16px; padding: 20px; background-color: #ffffff; border-radius: 8px; }
+	.form-title { font-size: 18px; font-weight: bold; color: #333333; margin-bottom: 16px; }
+	.form-item { margin-bottom: 16px; }
+	.label { font-size: 14px; color: #666666; margin-bottom: 8px; }
+	.input { border-width: 1px; border-style: solid; border-color: #dcdfe6; border-radius: 4px; padding: 10px 12px; font-size: 14px; }
+	.upload-area { width: 200px; height: 130px; border-width: 1px; border-style: dashed; border-color: #dcdfe6; border-radius: 4px; justify-content: center; align-items: center; }
+	.upload-text { font-size: 14px; color: #999999; }
+	.preview-img { width: 198px; height: 128px; }
+	.submit-btn { margin-top: 20px; padding: 14px; background-color: #1890ff; border-radius: 8px; align-items: center; }
+	.submit-text { font-size: 16px; color: #ffffff; font-weight: bold; }
+	.info-section { margin: 16px; padding: 20px; background-color: #ffffff; border-radius: 8px; }
+	.info-label { font-size: 14px; color: #333333; margin-bottom: 8px; }
+	.pending-section { margin: 16px; padding: 40px 20px; background-color: #ffffff; border-radius: 8px; align-items: center; }
+	.pending-text { font-size: 16px; color: #e6a23c; }
+</style>

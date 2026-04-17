@@ -1,0 +1,194 @@
+<template>
+	<view class="records-page">
+		<scroll-view class="records-scroll" direction="vertical" @scrolltolower="loadMore">
+			<view v-for="(item, idx) in records" :key="idx" class="record-card">
+				<view class="record-header">
+					<text class="record-method">{{getMethodText(item.withdraw_method)}}</text>
+					<text class="record-status" :class="getStatusClass(item.status)">{{getStatusText(item.status)}}</text>
+				</view>
+				<view class="record-body">
+					<text class="record-amount">-${{item.amount}}</text>
+					<view class="record-detail-row">
+						<text class="detail-label">手续费: ${{item.fee}}</text>
+						<text class="detail-label">实到: ${{item.actual_amount}}</text>
+					</view>
+					<text class="record-no">单号: {{item.withdraw_no}}</text>
+				</view>
+				<view class="record-footer">
+					<text class="record-time">{{formatTime(item.created_at)}}</text>
+					<text v-if="item.admin_remark != ''" class="record-remark">{{item.admin_remark}}</text>
+				</view>
+			</view>
+			<view v-if="records.length == 0 && !loading" class="empty-view">
+				<text class="empty-text">暂无出金记录</text>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get } from '@/utils/request.uts'
+
+	type WithdrawRecord = {
+		id : number
+		withdraw_no : string
+		amount : string
+		fee : string
+		actual_amount : string
+		withdraw_method : string
+		status : string
+		admin_remark : string
+		created_at : string
+	}
+
+	const records = ref([] as WithdrawRecord[])
+	const page = ref(1)
+	const loading = ref(false)
+	const hasMore = ref(true)
+
+	function getMethodText(m : string) : string {
+		if (m == 'wechat') return '微信'
+		if (m == 'alipay') return '支付宝'
+		if (m == 'usdt') return 'USDT'
+		return m
+	}
+
+	function getStatusText(s : string) : string {
+		if (s == 'pending') return '待审核'
+		if (s == 'reviewing') return '审核中'
+		if (s == 'approved') return '已通过'
+		if (s == 'processing') return '处理中'
+		if (s == 'completed') return '已完成'
+		if (s == 'rejected') return '已驳回'
+		if (s == 'cancelled') return '已取消'
+		return s
+	}
+
+	function getStatusClass(s : string) : string {
+		if (s == 'completed') return 'status-success'
+		if (s == 'rejected' || s == 'cancelled') return 'status-fail'
+		return 'status-pending'
+	}
+
+	function formatTime(t : string) : string {
+		if (t.length > 16) return t.substring(0, 16)
+		return t
+	}
+
+	function loadRecords(isRefresh : boolean) {
+		if (loading.value) return
+		if (!isRefresh && !hasMore.value) return
+		loading.value = true
+		if (isRefresh) { page.value = 1; hasMore.value = true }
+
+		get(`/api/mobile/fund/withdraws?page=${page.value}&pageSize=20`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				const list = d['list'] as UTSJSONObject[]
+				const items = list.map((item : UTSJSONObject) : WithdrawRecord => {
+					return {
+						id: (item['id'] as number) ?? 0,
+						withdraw_no: (item['withdraw_no'] as string) ?? '',
+						amount: (item['amount'] as string) ?? '0',
+						fee: (item['fee'] as string) ?? '0',
+						actual_amount: (item['actual_amount'] as string) ?? '0',
+						withdraw_method: (item['withdraw_method'] as string) ?? '',
+						status: (item['status'] as string) ?? '',
+						admin_remark: (item['admin_remark'] as string) ?? '',
+						created_at: (item['created_at'] as string) ?? '',
+					} as WithdrawRecord
+				})
+				if (isRefresh) {
+					records.value = items
+				} else {
+					records.value = [...records.value, ...items]
+				}
+				if (items.length < 20) hasMore.value = false
+				page.value = page.value + 1
+			}
+			loading.value = false
+		}).catch((_) => { loading.value = false })
+	}
+
+	function loadMore() { loadRecords(false) }
+
+	onShow(() => { loadRecords(true) })
+</script>
+
+<style>
+	.records-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.records-scroll {
+		flex: 1;
+		padding: 16px;
+	}
+
+	.record-card {
+		background-color: #ffffff;
+		border-radius: 8px;
+		padding: 16px;
+		margin-bottom: 12px;
+	}
+
+	.record-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.record-method {
+		font-size: 15px;
+		font-weight: bold;
+		color: #333333;
+	}
+
+	.record-status {
+		font-size: 12px;
+		padding: 2px 8px;
+		border-radius: 4px;
+	}
+
+	.status-success { color: #52c41a; background-color: #f6ffed; }
+	.status-fail { color: #ff4d4f; background-color: #fff2f0; }
+	.status-pending { color: #fa8c16; background-color: #fff7e6; }
+
+	.record-body { margin-bottom: 8px; }
+
+	.record-amount {
+		font-size: 22px;
+		font-weight: bold;
+		color: #ff4d4f;
+		margin-bottom: 4px;
+	}
+
+	.record-detail-row {
+		flex-direction: row;
+		margin-bottom: 4px;
+	}
+
+	.detail-label {
+		font-size: 12px;
+		color: #999999;
+		margin-right: 16px;
+	}
+
+	.record-no {
+		font-size: 12px;
+		color: #999999;
+	}
+
+	.record-footer {
+		flex-direction: row;
+		justify-content: space-between;
+	}
+
+	.record-time { font-size: 12px; color: #999999; }
+	.record-remark { font-size: 12px; color: #ff4d4f; }
+
+	.empty-view { padding: 60px 0; align-items: center; }
+	.empty-text { font-size: 14px; color: #999999; }
+</style>

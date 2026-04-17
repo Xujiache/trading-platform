@@ -1,0 +1,666 @@
+<template>
+	<view class="trade-page">
+		<view class="account-card">
+			<view class="account-header">
+				<text class="account-title">{{accountType == 'demo' ? '模拟账户' : '实盘账户'}}</text>
+				<view class="account-switch" @click="switchAccountType">
+					<text class="switch-text">切换</text>
+				</view>
+			</view>
+			<view class="equity-row">
+				<text class="equity-label">净值</text>
+				<text class="equity-value">${{formatMoney(accountInfo.equity)}}</text>
+			</view>
+			<view class="account-stats">
+				<view class="stat-item">
+					<text class="stat-label">余额</text>
+					<text class="stat-value">${{formatMoney(accountInfo.balance)}}</text>
+				</view>
+				<view class="stat-item">
+					<text class="stat-label">浮动盈亏</text>
+					<text class="stat-value" :class="accountInfo.floatingPnl >= 0 ? 'text-green' : 'text-red'">
+						{{accountInfo.floatingPnl >= 0 ? '+' : ''}}{{formatMoney(accountInfo.floatingPnl)}}
+					</text>
+				</view>
+				<view class="stat-item">
+					<text class="stat-label">已用保证金</text>
+					<text class="stat-value">${{formatMoney(accountInfo.frozenMargin)}}</text>
+				</view>
+				<view class="stat-item">
+					<text class="stat-label">可用保证金</text>
+					<text class="stat-value">${{formatMoney(accountInfo.availableMargin)}}</text>
+				</view>
+			</view>
+		</view>
+
+		<view class="action-bar">
+			<view class="action-btn action-btn-primary" @click="goPlaceOrder">
+				<text class="action-btn-text-light">下单交易</text>
+			</view>
+			<view class="action-btn action-btn-danger" @click="closeAll">
+				<text class="action-btn-text-light">一键平仓</text>
+			</view>
+		</view>
+
+		<view class="tab-bar">
+			<view v-for="(tab, idx) in tabs" :key="idx" class="tab-item" :class="{'tab-item-active': activeTab == idx}"
+				@click="activeTab = idx">
+				<text class="tab-text" :class="{'tab-text-active': activeTab == idx}">
+					{{tab}}{{idx == 0 && positions.length > 0 ? `(${positions.length})` : ''}}
+				</text>
+			</view>
+		</view>
+
+		<scroll-view class="content-scroll" direction="vertical" @scrolltolower="loadMore">
+			<view v-if="activeTab == 0">
+				<view v-for="(item, idx) in positions" :key="idx" class="order-card" @click="goOrderDetail(item.id)">
+					<view class="order-header">
+						<text class="order-symbol">{{item.symbol}}</text>
+						<view class="direction-badge" :class="item.direction == 'buy' ? 'badge-buy' : 'badge-sell'">
+							<text class="direction-text">{{item.direction == 'buy' ? '买入' : '卖出'}}</text>
+						</view>
+						<text class="order-lots">{{item.lots}}手</text>
+					</view>
+					<view class="order-body">
+						<view class="order-col">
+							<text class="col-label">开仓价</text>
+							<text class="col-value">{{item.open_price}}</text>
+						</view>
+						<view class="order-col">
+							<text class="col-label">现价</text>
+							<text class="col-value">{{item.currentPrice ?? '-'}}</text>
+						</view>
+						<view class="order-col">
+							<text class="col-label">盈亏</text>
+							<text class="col-value"
+								:class="parseFloat(item.floating_pnl + '') >= 0 ? 'text-green' : 'text-red'">
+								{{parseFloat(item.floating_pnl + '') >= 0 ? '+' : ''}}{{formatMoney(parseFloat(item.floating_pnl + ''))}}
+							</text>
+						</view>
+					</view>
+					<view class="order-footer">
+						<text class="order-time">{{formatTime(item.opened_at)}}</text>
+						<view class="close-btn" @click.stop="closeSingle(item.id)">
+							<text class="close-btn-text">平仓</text>
+						</view>
+					</view>
+				</view>
+				<view v-if="positions.length == 0" class="empty-view">
+					<text class="empty-text">暂无持仓</text>
+				</view>
+			</view>
+
+			<view v-if="activeTab == 1">
+				<view v-for="(item, idx) in pendingOrders" :key="idx" class="order-card">
+					<view class="order-header">
+						<text class="order-symbol">{{item.symbol}}</text>
+						<view class="direction-badge" :class="item.direction == 'buy' ? 'badge-buy' : 'badge-sell'">
+							<text class="direction-text">{{getPendingTypeText(item.pending_type)}}</text>
+						</view>
+						<text class="order-lots">{{item.lots}}手</text>
+					</view>
+					<view class="order-body">
+						<view class="order-col">
+							<text class="col-label">目标价</text>
+							<text class="col-value">{{item.target_price}}</text>
+						</view>
+						<view class="order-col">
+							<text class="col-label">现价</text>
+							<text class="col-value">{{item.currentBid ?? '-'}}</text>
+						</view>
+					</view>
+					<view class="order-footer">
+						<text class="order-time">{{formatTime(item.created_at)}}</text>
+						<view class="close-btn" @click="cancelPending(item.id)">
+							<text class="close-btn-text">撤销</text>
+						</view>
+					</view>
+				</view>
+				<view v-if="pendingOrders.length == 0" class="empty-view">
+					<text class="empty-text">暂无挂单</text>
+				</view>
+			</view>
+
+			<view v-if="activeTab == 2">
+				<view v-for="(item, idx) in historyOrders" :key="idx" class="order-card"
+					@click="goHistoryDetail(item)">
+					<view class="order-header">
+						<text class="order-symbol">{{item.symbol}}</text>
+						<view class="direction-badge" :class="item.direction == 'buy' ? 'badge-buy' : 'badge-sell'">
+							<text class="direction-text">{{item.direction == 'buy' ? '买入' : '卖出'}}</text>
+						</view>
+						<text class="order-status">{{getHistoryStatusText(item)}}</text>
+					</view>
+					<view class="order-body">
+						<view class="order-col">
+							<text class="col-label">开仓价</text>
+							<text class="col-value">{{item.open_price}}</text>
+						</view>
+						<view class="order-col">
+							<text class="col-label">平仓价</text>
+							<text class="col-value">{{item.close_price ?? '-'}}</text>
+						</view>
+						<view class="order-col">
+							<text class="col-label">净盈亏</text>
+							<text class="col-value"
+								:class="parseFloat((item.net_pnl ?? '0') + '') >= 0 ? 'text-green' : 'text-red'">
+								{{formatMoney(parseFloat((item.net_pnl ?? '0') + ''))}}
+							</text>
+						</view>
+					</view>
+					<view class="order-footer">
+						<text class="order-time">{{formatTime(item.closed_at ?? item.created_at)}}</text>
+						<text class="close-type-text">{{getCloseTypeText(item.close_type)}}</text>
+					</view>
+				</view>
+				<view v-if="historyOrders.length == 0" class="empty-view">
+					<text class="empty-text">暂无历史订单</text>
+				</view>
+			</view>
+		</scroll-view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { get, post, del } from '@/utils/request.uts'
+
+	type AccountInfo = {
+		balance : number
+		equity : number
+		frozenMargin : number
+		availableMargin : number
+		floatingPnl : number
+		openPositions : number
+	}
+
+	const tabs = ['持仓', '挂单', '历史']
+	const activeTab = ref(0)
+	const accountType = ref('demo')
+	const accountInfo = reactive({
+		balance: 0,
+		equity: 0,
+		frozenMargin: 0,
+		availableMargin: 0,
+		floatingPnl: 0,
+		openPositions: 0,
+	} as AccountInfo)
+
+	const positions = ref<UTSJSONObject[]>([])
+	const pendingOrders = ref<UTSJSONObject[]>([])
+	const historyOrders = ref<UTSJSONObject[]>([])
+	const historyPage = ref(1)
+	let refreshTimer = 0
+
+	onShow(() => {
+		loadAccount()
+		loadPositions()
+		loadPendings()
+		loadHistory()
+		refreshTimer = setInterval(() => {
+			loadAccount()
+			loadPositions()
+		}, 3000) as number
+	})
+
+	onHide(() => {
+		if (refreshTimer > 0) {
+			clearInterval(refreshTimer)
+			refreshTimer = 0
+		}
+	})
+
+	function loadAccount() {
+		get(`/api/mobile/trade/account?accountType=${accountType.value}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				accountInfo.balance = (d['balance'] as number) ?? 0
+				accountInfo.equity = (d['equity'] as number) ?? 0
+				accountInfo.frozenMargin = (d['frozenMargin'] as number) ?? 0
+				accountInfo.availableMargin = (d['availableMargin'] as number) ?? 0
+				accountInfo.floatingPnl = (d['floatingPnl'] as number) ?? 0
+				accountInfo.openPositions = (d['openPositions'] as number) ?? 0
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function loadPositions() {
+		get(`/api/mobile/trade/positions?accountType=${accountType.value}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const arr = JSON.parse<UTSJSONObject[]>(JSON.stringify(res.data))
+				if (arr != null) {
+					positions.value = arr!
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function loadPendings() {
+		get(`/api/mobile/trade/pendings?accountType=${accountType.value}`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const arr = JSON.parse<UTSJSONObject[]>(JSON.stringify(res.data))
+				if (arr != null) {
+					pendingOrders.value = arr!
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function loadHistory() {
+		get(`/api/mobile/trade/orders?accountType=${accountType.value}&status=closed,cancelled&page=${historyPage.value}&pageSize=20`).then((res) => {
+			if (res.code == 200 && res.data != null) {
+				const d = res.data as UTSJSONObject
+				const list = d['list'] as UTSJSONObject[]
+				if (list != null) {
+					if (historyPage.value == 1) {
+						historyOrders.value = list
+					} else {
+						for (let i = 0; i < list.length; i++) {
+							historyOrders.value.push(list[i])
+						}
+					}
+				}
+			}
+		}).catch((_e : any) => { })
+	}
+
+	function loadMore() {
+		if (activeTab.value == 2) {
+			historyPage.value++
+			loadHistory()
+		}
+	}
+
+	function switchAccountType() {
+		accountType.value = accountType.value == 'demo' ? 'real' : 'demo'
+		historyPage.value = 1
+		loadAccount()
+		loadPositions()
+		loadPendings()
+		loadHistory()
+	}
+
+	function goPlaceOrder() {
+		uni.navigateTo({ url: `/pages/trade/place-order?accountType=${accountType.value}` })
+	}
+
+	function goOrderDetail(orderId : any) {
+		uni.navigateTo({ url: `/pages/trade/order-detail?id=${orderId}` })
+	}
+
+	function goHistoryDetail(item : UTSJSONObject) {
+		const recordType = (item['record_type'] ?? 'order') as string
+		const id = item['id']
+		uni.navigateTo({ url: `/pages/trade/order-detail?id=${id}&record_type=${recordType}` })
+	}
+
+	function closeSingle(orderId : any) {
+		uni.showModal({
+			title: '确认平仓',
+			content: '确定要平仓该订单吗？',
+			success: (modalRes) => {
+				if (modalRes.confirm) {
+					post(`/api/mobile/trade/close/${orderId}`, {}).then((res) => {
+						if (res.code == 200) {
+							uni.showToast({ title: '平仓成功', icon: 'success' })
+							loadAccount()
+							loadPositions()
+						} else {
+							uni.showToast({ title: res.msg, icon: 'none' })
+						}
+					}).catch((_e : any) => {
+						uni.showToast({ title: '平仓失败', icon: 'none' })
+					})
+				}
+			}
+		})
+	}
+
+	function closeAll() {
+		if (positions.value.length == 0) {
+			uni.showToast({ title: '暂无持仓', icon: 'none' })
+			return
+		}
+		uni.showModal({
+			title: '一键平仓',
+			content: `确定要平仓全部 ${positions.value.length} 笔持仓吗？`,
+			success: (modalRes) => {
+				if (modalRes.confirm) {
+					post('/api/mobile/trade/close-all', { accountType: accountType.value }).then((res) => {
+						if (res.code == 200) {
+							uni.showToast({ title: '一键平仓完成', icon: 'success' })
+							loadAccount()
+							loadPositions()
+						} else {
+							uni.showToast({ title: res.msg, icon: 'none' })
+						}
+					}).catch((_e : any) => {
+						uni.showToast({ title: '操作失败', icon: 'none' })
+					})
+				}
+			}
+		})
+	}
+
+	function cancelPending(pendingId : any) {
+		uni.showModal({
+			title: '撤销挂单',
+			content: '确定要撤销该挂单吗？',
+			success: (modalRes) => {
+				if (modalRes.confirm) {
+					del(`/api/mobile/trade/pending/${pendingId}`).then((res) => {
+						if (res.code == 200) {
+							uni.showToast({ title: '已撤销', icon: 'success' })
+							loadPendings()
+						} else {
+							uni.showToast({ title: res.msg, icon: 'none' })
+						}
+					}).catch((_e : any) => {
+						uni.showToast({ title: '撤销失败', icon: 'none' })
+					})
+				}
+			}
+		})
+	}
+
+	function formatMoney(val : number) : string {
+		return val.toFixed(2)
+	}
+
+	function formatTime(t : any) : string {
+		if (t == null) return '-'
+		const s = t as string
+		if (s.length > 16) return s.substring(0, 16).replace('T', ' ')
+		return s
+	}
+
+	function getPendingTypeText(t : any) : string {
+		const s = t as string
+		if (s == 'buy_limit') return '买入限价'
+		if (s == 'buy_stop') return '买入止损'
+		if (s == 'sell_limit') return '卖出限价'
+		if (s == 'sell_stop') return '卖出止损'
+		return s
+	}
+
+	function getHistoryStatusText(item : UTSJSONObject) : string {
+		const status = (item['status'] ?? '') as string
+		const recordType = (item['record_type'] ?? '') as string
+		if (status == 'closed') return '已平仓'
+		if (status == 'cancelled' && recordType == 'pending') return '挂单已撤销'
+		if (status == 'expired') return '挂单已过期'
+		if (status == 'cancelled') return '已取消'
+		return status
+	}
+
+	function getCloseTypeText(t : any) : string {
+		if (t == null) return ''
+		const s = t as string
+		if (s == 'manual') return '手动平仓'
+		if (s == 'stop_loss') return '止损平仓'
+		if (s == 'take_profit') return '止盈平仓'
+		if (s == 'admin') return '管理员平仓'
+		if (s == 'trailing_stop') return '移动止损'
+		return s
+	}
+</script>
+
+<style>
+	.trade-page {
+		flex: 1;
+		background-color: #f5f5f5;
+	}
+
+	.account-card {
+		margin: 10px;
+		padding: 15px;
+		background-color: #1a237e;
+		border-radius: 12px;
+	}
+
+	.account-header {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.account-title {
+		font-size: 14px;
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.account-switch {
+		padding: 4px 12px;
+		border-radius: 12px;
+		background-color: rgba(255, 255, 255, 0.2);
+	}
+
+	.switch-text {
+		font-size: 12px;
+		color: #ffffff;
+	}
+
+	.equity-row {
+		margin-bottom: 12px;
+	}
+
+	.equity-label {
+		font-size: 12px;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.equity-value {
+		font-size: 28px;
+		font-weight: bold;
+		color: #ffffff;
+		margin-top: 4px;
+	}
+
+	.account-stats {
+		flex-direction: row;
+		flex-wrap: wrap;
+	}
+
+	.stat-item {
+		width: 50%;
+		margin-bottom: 8px;
+	}
+
+	.stat-label {
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.6);
+	}
+
+	.stat-value {
+		font-size: 14px;
+		color: #ffffff;
+		margin-top: 2px;
+	}
+
+	.action-bar {
+		flex-direction: row;
+		padding: 0 10px;
+		margin-bottom: 10px;
+	}
+
+	.action-btn {
+		flex: 1;
+		height: 40px;
+		border-radius: 8px;
+		justify-content: center;
+		align-items: center;
+		margin: 0 5px;
+	}
+
+	.action-btn-primary {
+		background-color: #1890ff;
+	}
+
+	.action-btn-danger {
+		background-color: #ff4d4f;
+	}
+
+	.action-btn-text-light {
+		color: #ffffff;
+		font-size: 15px;
+		font-weight: bold;
+	}
+
+	.tab-bar {
+		flex-direction: row;
+		background-color: #ffffff;
+		border-bottom-width: 0.5px;
+		border-bottom-color: #eeeeee;
+		border-bottom-style: solid;
+	}
+
+	.tab-item {
+		flex: 1;
+		height: 44px;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.tab-item-active {
+		border-bottom-width: 2px;
+		border-bottom-color: #1890ff;
+		border-bottom-style: solid;
+	}
+
+	.tab-text {
+		font-size: 14px;
+		color: #666666;
+	}
+
+	.tab-text-active {
+		color: #1890ff;
+		font-weight: bold;
+	}
+
+	.content-scroll {
+		flex: 1;
+	}
+
+	.order-card {
+		margin: 8px 10px;
+		padding: 12px;
+		background-color: #ffffff;
+		border-radius: 8px;
+	}
+
+	.order-header {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 10px;
+	}
+
+	.order-symbol {
+		font-size: 16px;
+		font-weight: bold;
+		color: #333333;
+		margin-right: 8px;
+	}
+
+	.direction-badge {
+		padding: 2px 8px;
+		border-radius: 4px;
+		margin-right: 8px;
+	}
+
+	.badge-buy {
+		background-color: #e8f5e9;
+	}
+
+	.badge-sell {
+		background-color: #ffebee;
+	}
+
+	.direction-text {
+		font-size: 12px;
+		font-weight: bold;
+	}
+
+	.badge-buy .direction-text {
+		color: #4caf50;
+	}
+
+	.badge-sell .direction-text {
+		color: #f44336;
+	}
+
+	.order-lots {
+		font-size: 13px;
+		color: #666666;
+	}
+
+	.order-status {
+		font-size: 12px;
+		color: #999999;
+	}
+
+	.order-body {
+		flex-direction: row;
+		margin-bottom: 10px;
+	}
+
+	.order-col {
+		flex: 1;
+	}
+
+	.col-label {
+		font-size: 11px;
+		color: #999999;
+	}
+
+	.col-value {
+		font-size: 14px;
+		color: #333333;
+		margin-top: 2px;
+	}
+
+	.order-footer {
+		flex-direction: row;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.order-time {
+		font-size: 12px;
+		color: #999999;
+	}
+
+	.close-btn {
+		padding: 4px 16px;
+		border-radius: 4px;
+		background-color: #ff4d4f;
+	}
+
+	.close-btn-text {
+		font-size: 12px;
+		color: #ffffff;
+	}
+
+	.close-type-text {
+		font-size: 12px;
+		color: #999999;
+	}
+
+	.text-green {
+		color: #4caf50;
+	}
+
+	.text-red {
+		color: #f44336;
+	}
+
+	.empty-view {
+		padding: 60px 0;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.empty-text {
+		font-size: 14px;
+		color: #999999;
+	}
+</style>

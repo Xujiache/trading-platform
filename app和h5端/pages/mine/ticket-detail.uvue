@@ -1,0 +1,82 @@
+<template>
+	<scroll-view class="detail-page" direction="vertical">
+		<view class="card">
+			<view class="header">
+				<text class="ticket-no">{{ticketNo}}</text>
+				<text :class="'status status-' + status">{{statusText}}</text>
+			</view>
+			<text class="title">{{ticketTitle}}</text>
+			<text class="content-text">{{ticketContent}}</text>
+			<text class="time">提交时间: {{createdAt}}</text>
+		</view>
+
+		<view class="reply-card" v-if="replyContent.length > 0">
+			<text class="reply-label">客服回复</text>
+			<text class="reply-text">{{replyContent}}</text>
+			<text class="reply-time">{{repliedAt}}</text>
+		</view>
+
+		<view class="no-reply" v-else>
+			<text class="no-reply-text">暂无回复，请耐心等待</text>
+		</view>
+	</scroll-view>
+</template>
+
+<script setup lang="uts">
+	import { get } from '../../utils/request.uts'
+
+	const ticketNo = ref('')
+	const ticketTitle = ref('')
+	const ticketContent = ref('')
+	const status = ref('')
+	const createdAt = ref('')
+	const replyContent = ref('')
+	const repliedAt = ref('')
+
+	const statusText = computed(() : string => {
+		if (status.value == 'pending') return '待处理'
+		if (status.value == 'processing') return '处理中'
+		if (status.value == 'resolved') return '已解决'
+		if (status.value == 'closed') return '已关闭'
+		return status.value
+	})
+
+	onLoad((options : OnLoadOptions) => {
+		const id = options['id'] ?? ''
+		if (id.length > 0) {
+			get(`/api/mobile/ticket/${id}`).then((res) => {
+				if (res.code == 200 && res.data != null) {
+					const d = res.data as UTSJSONObject
+					ticketNo.value = (d['ticket_no'] as string) ?? ''
+					ticketTitle.value = (d['title'] as string) ?? ''
+					ticketContent.value = (d['content'] as string) ?? ''
+					status.value = (d['status'] as string) ?? ''
+					createdAt.value = (d['created_at'] as string) ?? ''
+					replyContent.value = (d['reply_content'] as string) ?? ''
+					repliedAt.value = (d['replied_at'] as string) ?? ''
+				}
+			}).catch((_e) => {})
+		}
+	})
+</script>
+
+<style>
+	.detail-page { flex: 1; background-color: #f5f5f5; }
+	.card { margin: 16px; padding: 20px; background-color: #ffffff; border-radius: 8px; }
+	.header { flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+	.ticket-no { font-size: 12px; color: #999999; }
+	.status { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
+	.status-pending { color: #f56c6c; background-color: #fef0f0; }
+	.status-processing { color: #e6a23c; background-color: #fdf6ec; }
+	.status-resolved { color: #67c23a; background-color: #f0f9eb; }
+	.status-closed { color: #909399; background-color: #f4f4f5; }
+	.title { font-size: 17px; font-weight: bold; color: #333333; margin-bottom: 12px; }
+	.content-text { font-size: 14px; color: #666666; line-height: 22px; margin-bottom: 12px; }
+	.time { font-size: 12px; color: #cccccc; }
+	.reply-card { margin: 0 16px 16px; padding: 20px; background-color: #ffffff; border-radius: 8px; border-left-width: 3px; border-left-style: solid; border-left-color: #67c23a; }
+	.reply-label { font-size: 14px; font-weight: bold; color: #67c23a; margin-bottom: 8px; }
+	.reply-text { font-size: 14px; color: #333333; line-height: 22px; margin-bottom: 8px; }
+	.reply-time { font-size: 12px; color: #cccccc; }
+	.no-reply { margin: 0 16px; padding: 30px; background-color: #ffffff; border-radius: 8px; align-items: center; }
+	.no-reply-text { font-size: 14px; color: #999999; }
+</style>

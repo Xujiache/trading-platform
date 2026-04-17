@@ -1,0 +1,283 @@
+<template>
+	<view class="register-page">
+		<view class="header">
+			<text class="title">创建账户</text>
+			<text class="subtitle">注册后即可体验交易</text>
+		</view>
+
+		<view class="form-area">
+			<view class="input-group">
+				<text class="label">邮箱</text>
+				<input class="input" type="text" placeholder="请输入邮箱地址" v-model="email" />
+			</view>
+
+			<view class="input-group">
+				<text class="label">验证码</text>
+				<view class="code-row">
+					<input class="input flex-1" type="number" placeholder="请输入验证码" v-model="code" />
+					<view class="code-btn" :class="{'code-btn-disabled': codeCooldown > 0}" @click="sendCode">
+						<text class="code-btn-text">{{codeCooldown > 0 ? codeCooldown + 's' : '获取验证码'}}</text>
+					</view>
+				</view>
+			</view>
+
+			<view class="input-group">
+				<text class="label">密码</text>
+				<input class="input" type="password" placeholder="8-20位，包含大小写字母和数字" v-model="password" />
+			</view>
+
+			<view class="input-group">
+				<text class="label">确认密码</text>
+				<input class="input" type="password" placeholder="请再次输入密码" v-model="confirmPassword" />
+			</view>
+
+			<view class="agreement-row" @click="agreed = !agreed">
+				<text class="checkbox">{{agreed ? '☑' : '☐'}}</text>
+				<text class="agreement-text">我已阅读并同意</text>
+				<text class="agreement-link" @click.stop="goAgreement">《用户协议》</text>
+				<text class="agreement-text">和</text>
+				<text class="agreement-link" @click.stop="goPrivacy">《隐私政策》</text>
+			</view>
+
+			<view class="btn-primary" @click="handleRegister">
+				<text class="btn-text">注 册</text>
+			</view>
+
+			<view class="login-row">
+				<text class="login-hint">已有账户？</text>
+				<text class="login-link" @click="goLogin">立即登录</text>
+			</view>
+		</view>
+	</view>
+</template>
+
+<script setup lang="uts">
+	import { post } from '../../utils/request.uts'
+
+	const email = ref('')
+	const code = ref('')
+	const password = ref('')
+	const confirmPassword = ref('')
+	const agreed = ref(false)
+	const codeCooldown = ref(0)
+	let cooldownTimer = 0
+
+	function sendCode() {
+		if (codeCooldown.value > 0) return
+		if (email.value.length == 0) {
+			uni.showToast({ title: '请输入邮箱', icon: 'none' })
+			return
+		}
+
+		post('/api/mobile/auth/send-code', {
+			email: email.value,
+			type: 'register'
+		}).then((res) => {
+			if (res.code == 200) {
+				uni.showToast({ title: '验证码已发送', icon: 'success' })
+				codeCooldown.value = 60
+				cooldownTimer = setInterval(() => {
+					codeCooldown.value--
+					if (codeCooldown.value <= 0) {
+						clearInterval(cooldownTimer)
+					}
+				}, 1000)
+			} else {
+				uni.showToast({ title: res.msg, icon: 'none' })
+			}
+		}).catch((_err) => {
+			uni.showToast({ title: '发送失败', icon: 'none' })
+		})
+	}
+
+	function handleRegister() {
+		if (email.value.length == 0) {
+			uni.showToast({ title: '请输入邮箱', icon: 'none' })
+			return
+		}
+		if (code.value.length == 0) {
+			uni.showToast({ title: '请输入验证码', icon: 'none' })
+			return
+		}
+		if (password.value.length < 8) {
+			uni.showToast({ title: '密码至少8位', icon: 'none' })
+			return
+		}
+		if (password.value != confirmPassword.value) {
+			uni.showToast({ title: '两次密码不一致', icon: 'none' })
+			return
+		}
+		if (!agreed.value) {
+			uni.showToast({ title: '请同意用户协议和隐私政策', icon: 'none' })
+			return
+		}
+
+		uni.showLoading({ title: '注册中...' })
+		post('/api/mobile/auth/register', {
+			email: email.value,
+			code: code.value,
+			password: password.value,
+			confirmPassword: confirmPassword.value
+		}).then((res) => {
+			uni.hideLoading()
+			if (res.code == 200 && res.data != null) {
+				const data = res.data as UTSJSONObject
+				uni.setStorageSync('token', data['token'] as string)
+				uni.setStorageSync('refreshToken', data['refreshToken'] as string)
+				uni.setStorageSync('userInfo', JSON.stringify(data['userInfo']))
+				uni.showToast({ title: '注册成功', icon: 'success' })
+				setTimeout(() => {
+					uni.switchTab({ url: '/pages/index/index' })
+				}, 1000)
+			} else {
+				uni.showToast({ title: res.msg, icon: 'none' })
+			}
+		}).catch((_err) => {
+			uni.hideLoading()
+			uni.showToast({ title: '注册失败', icon: 'none' })
+		})
+	}
+
+	function goLogin() {
+		uni.navigateBack({})
+	}
+
+	function goAgreement() {
+		uni.navigateTo({ url: '/pages/mine/agreement' })
+	}
+
+	function goPrivacy() {
+		uni.navigateTo({ url: '/pages/mine/privacy' })
+	}
+
+	onUnload(() => {
+		if (cooldownTimer > 0) clearInterval(cooldownTimer)
+	})
+</script>
+
+<style>
+	.register-page {
+		flex: 1;
+		background-color: #ffffff;
+		padding: 20px 30px;
+	}
+
+	.header {
+		margin-top: 30px;
+		margin-bottom: 30px;
+	}
+
+	.title {
+		font-size: 28px;
+		font-weight: bold;
+		color: #333333;
+		margin-bottom: 8px;
+	}
+
+	.subtitle {
+		font-size: 14px;
+		color: #999999;
+	}
+
+	.form-area {
+		flex: 1;
+	}
+
+	.input-group {
+		margin-bottom: 20px;
+	}
+
+	.label {
+		font-size: 14px;
+		color: #666666;
+		margin-bottom: 8px;
+	}
+
+	.input {
+		height: 48px;
+		border: 1px solid #e0e0e0;
+		border-radius: 8px;
+		padding: 0 16px;
+		font-size: 15px;
+	}
+
+	.code-row {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.flex-1 {
+		flex: 1;
+	}
+
+	.code-btn {
+		margin-left: 12px;
+		background-color: #1890ff;
+		border-radius: 8px;
+		padding: 12px 16px;
+	}
+
+	.code-btn-disabled {
+		background-color: #cccccc;
+	}
+
+	.code-btn-text {
+		color: #ffffff;
+		font-size: 13px;
+	}
+
+	.agreement-row {
+		flex-direction: row;
+		align-items: center;
+		margin-bottom: 24px;
+		flex-wrap: wrap;
+	}
+
+	.checkbox {
+		font-size: 18px;
+		color: #1890ff;
+		margin-right: 6px;
+	}
+
+	.agreement-text {
+		font-size: 12px;
+		color: #999999;
+	}
+
+	.agreement-link {
+		font-size: 12px;
+		color: #1890ff;
+	}
+
+	.btn-primary {
+		height: 48px;
+		background-color: #1890ff;
+		border-radius: 8px;
+		justify-content: center;
+		align-items: center;
+		margin-bottom: 20px;
+	}
+
+	.btn-text {
+		color: #ffffff;
+		font-size: 16px;
+		font-weight: bold;
+	}
+
+	.login-row {
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+	}
+
+	.login-hint {
+		font-size: 14px;
+		color: #999999;
+	}
+
+	.login-link {
+		font-size: 14px;
+		color: #1890ff;
+		margin-left: 4px;
+	}
+</style>
